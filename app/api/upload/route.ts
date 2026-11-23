@@ -19,29 +19,57 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Geen afbeelding ontvangen." },
+        { error: "Geen bestand ontvangen." },
         { status: 400 }
       );
     }
 
-    const allowedTypes = [
+    const imageTypes = [
       "image/png",
       "image/jpeg",
       "image/webp",
     ];
 
-    if (!allowedTypes.includes(file.type)) {
+    const isImage = imageTypes.includes(file.type);
+    const isMetadata = file.type === "application/json";
+
+    if (!isImage && !isMetadata) {
       return NextResponse.json(
-        { error: "Gebruik PNG, JPG of WEBP." },
+        { error: "Alleen PNG, JPG, WEBP of JSON is toegestaan." },
         { status: 400 }
       );
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    const maxSize = isImage
+      ? 5 * 1024 * 1024
+      : 1 * 1024 * 1024;
+
+    if (file.size > maxSize) {
       return NextResponse.json(
-        { error: "De afbeelding mag maximaal 5 MB zijn." },
+        { error: "Het bestand is te groot." },
         { status: 400 }
       );
+    }
+
+    if (isMetadata) {
+      try {
+        const content = await file.text();
+        const parsed = JSON.parse(content);
+
+        if (
+          !parsed ||
+          typeof parsed.name !== "string" ||
+          typeof parsed.symbol !== "string" ||
+          typeof parsed.image !== "string"
+        ) {
+          throw new Error("Ongeldige metadata.");
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "Het metadata JSON-bestand is ongeldig." },
+          { status: 400 }
+        );
+      }
     }
 
     const uploadData = new FormData();
@@ -71,10 +99,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const cid = result.data?.cid;
+
+    if (!cid) {
+      throw new Error("Pinata heeft geen CID teruggegeven.");
+    }
+
     return NextResponse.json({
       success: true,
-      cid: result.data.cid,
-      url: `https://gateway.pinata.cloud/ipfs/${result.data.cid}`,
+      cid,
+      url: `https://gateway.pinata.cloud/ipfs/${cid}`,
     });
   } catch (error) {
     console.error("Upload error:", error);

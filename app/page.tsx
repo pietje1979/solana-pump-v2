@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Connection,
   Keypair,
@@ -53,6 +53,24 @@ export default function Home() {
   const [mintAddress, setMintAddress] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageCid, setImageCid] = useState("");
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreview("");
+      return;
+    }
+
+    const preview = URL.createObjectURL(selectedImage);
+    setImagePreview(preview);
+
+    return () => URL.revokeObjectURL(preview);
+  }, [selectedImage]);
+
   function getPhantom() {
     return window.phantom?.solana ?? window.solana;
   }
@@ -83,6 +101,67 @@ export default function Home() {
     } catch (error) {
       console.error(error);
       setMessage("Ontkoppelen mislukt.");
+    }
+  }
+
+  function chooseImage(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setMessage("Gebruik PNG, JPG of WEBP.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage("De afbeelding mag maximaal 5 MB zijn.");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedImage(file);
+    setImageUrl("");
+    setImageCid("");
+    setMessage("Afbeelding geselecteerd.");
+  }
+
+  async function uploadImage() {
+    if (!selectedImage || uploadBusy) return;
+
+    try {
+      setUploadBusy(true);
+      setMessage("Afbeelding wordt naar Pinata geüpload...");
+
+      const formData = new FormData();
+      formData.append("file", selectedImage);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Uploaden mislukt.");
+      }
+
+      setImageUrl(result.url);
+      setImageCid(result.cid);
+      setMessage("Afbeelding succesvol geüpload naar Pinata!");
+    } catch (error) {
+      console.error("Image upload error:", error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Afbeelding uploaden mislukt."
+      );
+    } finally {
+      setUploadBusy(false);
     }
   }
 
@@ -235,6 +314,7 @@ export default function Home() {
         <h1>
           LAUNCH YOUR <span>MEMECOIN</span>
         </h1>
+
         <p>Create, launch and trade tokens on Solana.</p>
 
         {message && <p>{message}</p>}
@@ -295,6 +375,47 @@ export default function Home() {
           onChange={(event) => setSupply(event.target.value)}
         />
 
+        <label htmlFor="coinImage">Coin logo (PNG, JPG of WEBP)</label>
+        <input
+          id="coinImage"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={chooseImage}
+        />
+
+        {imagePreview && (
+          <div>
+            <p>Voorbeeld van je logo:</p>
+            <img
+              src={imagePreview}
+              alt="Voorbeeld coin logo"
+              style={{
+                width: "140px",
+                height: "140px",
+                objectFit: "cover",
+                borderRadius: "16px",
+              }}
+            />
+          </div>
+        )}
+
+        <button
+          onClick={uploadImage}
+          disabled={!selectedImage || uploadBusy}
+        >
+          {uploadBusy ? "Uploading..." : "Upload logo to Pinata"}
+        </button>
+
+        {imageUrl && (
+          <div>
+            <p>Logo opgeslagen op IPFS:</p>
+            <a href={imageUrl} target="_blank" rel="noreferrer">
+              Bekijk geüploade afbeelding
+            </a>
+            <p>CID: {imageCid}</p>
+          </div>
+        )}
+
         <button onClick={createCoin} disabled={busy}>
           {busy ? "Creating..." : "Create Coin"}
         </button>
@@ -315,7 +436,8 @@ export default function Home() {
 
         <p>
           Devnet only. Phantom will ask you to approve the transaction.
-          The coin name and ticker are not yet stored as on-chain metadata.
+          The coin name, ticker and logo are not yet stored together
+          as on-chain metadata.
         </p>
       </section>
 

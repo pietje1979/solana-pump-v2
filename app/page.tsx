@@ -5,7 +5,6 @@ import { useState } from "react";
 
 type PhantomProvider = {
   isPhantom?: boolean;
-  publicKey?: { toString(): string };
   connect: () => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;
 };
@@ -13,9 +12,7 @@ type PhantomProvider = {
 declare global {
   interface Window {
     solana?: PhantomProvider;
-    phantom?: {
-      solana?: PhantomProvider;
-    };
+    phantom?: { solana?: PhantomProvider };
   }
 }
 
@@ -23,30 +20,25 @@ export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
   const [network, setNetwork] = useState("Nog niet gecontroleerd");
   const [message, setMessage] = useState("");
+  const [coinName, setCoinName] = useState("");
+  const [ticker, setTicker] = useState("");
+  const [supply, setSupply] = useState("1000000000");
 
   async function connectWallet() {
-    const provider = window.phantom?.solana ?? window.solana;
-
-    if (!provider || !provider.isPhantom) {
-      setMessage("Phantom wallet niet gevonden.");
-      return;
-    }
-
     try {
+      const provider = window.phantom?.solana ?? window.solana;
+
+      if (!provider?.isPhantom) {
+        setMessage("Phantom wallet niet gevonden.");
+        return;
+      }
+
       const response = await provider.connect();
       setWalletAddress(response.publicKey.toString());
-      setMessage("Phantom wallet succesvol verbonden!");
-    } catch {
-      setMessage("Phantom verbinding mislukt.");
-      return;
-    }
 
-    try {
-      const response = await fetch("https://api.devnet.solana.com", {
+      const rpc = await fetch("https://api.devnet.solana.com", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -54,37 +46,59 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const data = await rpc.json();
 
       if (data.result === "ok") {
-        setNetwork("Solana Devnet RPC bereikbaar");
-        setMessage(
-          "Wallet verbonden. Devnet-server bereikbaar. Controleer ook het netwerk in Phantom."
-        );
+        setNetwork("Solana Devnet bereikbaar");
+        setMessage("Phantom verbonden. Devnet bereikbaar.");
       } else {
-        setNetwork("Devnet niet bereikbaar");
-        setMessage("De Devnet-server reageert niet goed.");
+        setNetwork("Controle mislukt");
+        setMessage("Devnet reageert niet.");
       }
     } catch {
-      setNetwork("Controle mislukt");
-      setMessage("Wallet verbonden, maar Devnet-controle mislukt.");
+      setMessage("Verbinding of netwerkcontrole mislukt.");
     }
   }
 
   async function disconnectWallet() {
     try {
       const provider = window.phantom?.solana ?? window.solana;
-
-      if (provider) {
-        await provider.disconnect();
-      }
+      if (provider) await provider.disconnect();
 
       setWalletAddress("");
       setNetwork("Niet verbonden");
       setMessage("Wallet ontkoppeld.");
     } catch {
-      setMessage("Ontkoppelen is niet gelukt.");
+      setMessage("Ontkoppelen mislukt.");
     }
+  }
+
+  function createCoin() {
+    if (!walletAddress) {
+      setMessage("Verbind eerst je Phantom wallet.");
+      return;
+    }
+
+    if (!coinName.trim() || !ticker.trim() || !supply.trim()) {
+      setMessage("Vul alle velden in.");
+      return;
+    }
+
+    if (!/^[A-Za-z0-9]{2,10}$/.test(ticker)) {
+      setMessage("Ticker moet 2 tot 10 letters of cijfers bevatten.");
+      return;
+    }
+
+    const amount = Number(supply);
+
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      setMessage("Vul een geldig geheel aantal tokens in.");
+      return;
+    }
+
+    setMessage(
+      "Formulier gecontroleerd! De echte tokenaanmaak wordt in de volgende stap aangesloten."
+    );
   }
 
   return (
@@ -105,7 +119,10 @@ export default function Home() {
       <section className="hero">
         <h1>LAUNCH YOUR <span>MEMECOIN</span></h1>
         <p>Create, launch and trade tokens on Solana.</p>
-        <button onClick={connectWallet}>Connect Wallet</button>
+
+        {!walletAddress && (
+          <button onClick={connectWallet}>Connect Wallet</button>
+        )}
 
         {message && <p>{message}</p>}
 
@@ -113,35 +130,57 @@ export default function Home() {
           <>
             <p>Connected wallet: {walletAddress}</p>
             <p>Website network: {network}</p>
-            <p>Controleer dat Phantom zelf ook op Devnet staat.</p>
           </>
         )}
       </section>
 
       <section className="stats">
-        <div>
-          <h2>0.02 SOL</h2>
-          <p>Coin launch fee</p>
-        </div>
-        <div>
-          <h2>1%</h2>
-          <p>Trading fee</p>
-        </div>
-        <div>
-          <h2>Solana</h2>
-          <p>Blockchain</p>
-        </div>
+        <div><h2>0.02 SOL</h2><p>Coin launch fee</p></div>
+        <div><h2>1%</h2><p>Trading fee</p></div>
+        <div><h2>Solana</h2><p>Blockchain</p></div>
       </section>
 
       <section className="launch">
         <h2>Launch your coin</h2>
-        <p>Connect your Phantom wallet to get started.</p>
-        <button onClick={connectWallet}>Connect Phantom</button>
+        <p>Create your own Solana token on Devnet.</p>
+
+        <label htmlFor="coinName">Coin name</label>
+        <input
+          id="coinName"
+          value={coinName}
+          onChange={(event) => setCoinName(event.target.value)}
+          placeholder="My First Coin"
+          maxLength={32}
+        />
+
+        <label htmlFor="ticker">Ticker</label>
+        <input
+          id="ticker"
+          value={ticker}
+          onChange={(event) => setTicker(event.target.value.toUpperCase())}
+          placeholder="TEST"
+          maxLength={10}
+        />
+
+        <label htmlFor="supply">Total supply</label>
+        <input
+          id="supply"
+          type="number"
+          min="1"
+          step="1"
+          value={supply}
+          onChange={(event) => setSupply(event.target.value)}
+        />
+
+        <button onClick={createCoin}>Create Coin</button>
+
+        <p>
+          Devnet testing only. This form does not create a token or send SOL yet.
+        </p>
       </section>
 
       <footer>
         <p>© 2026 SOLANA.PUMP — Built on Solana</p>
-        <p>Devnet testing only. No transactions are made.</p>
       </footer>
     </main>
   );

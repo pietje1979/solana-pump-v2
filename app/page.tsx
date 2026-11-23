@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import {
   Connection,
   Keypair,
@@ -19,6 +20,24 @@ import {
   createMintToInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
+
+import {
+  createMetadataAccountV3,
+  mplTokenMetadata,
+} from "@metaplex-foundation/mpl-token-metadata";
+
+import {
+  createNoopSigner,
+} from "@metaplex-foundation/umi";
+
+import {
+  createUmi,
+} from "@metaplex-foundation/umi-bundle-defaults";
+
+import {
+  fromWeb3JsPublicKey,
+  toWeb3JsInstruction,
+} from "@metaplex-foundation/umi-web3js-adapters";
 
 type PhantomProvider = {
   isPhantom?: boolean;
@@ -44,20 +63,26 @@ const connection = new Connection(
   "confirmed"
 );
 
+const umi = createUmi(
+  "https://api.devnet.solana.com"
+).use(mplTokenMetadata());
+
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
   const [coinName, setCoinName] = useState("");
   const [ticker, setTicker] = useState("");
   const [supply, setSupply] = useState("1000000000");
+
   const [message, setMessage] = useState("");
   const [mintAddress, setMintAddress] = useState("");
+  const [transactionSignature, setTransactionSignature] = useState("");
+
   const [busy, setBusy] = useState(false);
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [uploadBusy, setUploadBusy] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
-  const [imageCid, setImageCid] = useState("");
+  const [metadataUrl, setMetadataUrl] = useState("");
 
   useEffect(() => {
     if (!selectedImage) {
@@ -85,6 +110,7 @@ export default function Home() {
       }
 
       const response = await provider.connect();
+
       setWalletAddress(response.publicKey.toString());
       setMessage("Phantom verbonden.");
     } catch (error) {
@@ -96,6 +122,7 @@ export default function Home() {
   async function disconnectWallet() {
     try {
       await getPhantom()?.disconnect();
+
       setWalletAddress("");
       setMessage("Wallet ontkoppeld.");
     } catch (error) {
@@ -109,7 +136,11 @@ export default function Home() {
 
     if (!file) return;
 
-    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+    ];
 
     if (!allowedTypes.includes(file.type)) {
       setMessage("Gebruik PNG, JPG of WEBP.");
@@ -125,44 +156,33 @@ export default function Home() {
 
     setSelectedImage(file);
     setImageUrl("");
-    setImageCid("");
+    setMetadataUrl("");
+    setMintAddress("");
+    setTransactionSignature("");
     setMessage("Afbeelding geselecteerd.");
   }
 
-  async function uploadImage() {
-    if (!selectedImage || uploadBusy) return;
+  async function uploadToPinata(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
 
-    try {
-      setUploadBusy(true);
-      setMessage("Afbeelding wordt naar Pinata geüpload...");
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
 
-      const formData = new FormData();
-      formData.append("file", selectedImage);
+    const result = await response.json();
 
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Uploaden mislukt.");
-      }
-
-      setImageUrl(result.url);
-      setImageCid(result.cid);
-      setMessage("Afbeelding succesvol geüpload naar Pinata!");
-    } catch (error) {
-      console.error("Image upload error:", error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Afbeelding uploaden mislukt."
+    if (!response.ok || !result.url || !result.cid) {
+      throw new Error(
+        result.error || "Uploaden naar Pinata is mislukt."
       );
-    } finally {
-      setUploadBusy(false);
     }
+
+    return {
+      url: result.url as string,
+      cid: result.cid as string,
+    };
   }
 
   async function createCoin() {
@@ -171,6 +191,9 @@ export default function Home() {
     try {
       setMessage("");
       setMintAddress("");
+      setTransactionSignature("");
+      setImageUrl("");
+      setMetadataUrl("");
 
       const provider = getPhantom();
 
@@ -189,8 +212,20 @@ export default function Home() {
         return;
       }
 
+      if (coinName.trim().length > 32) {
+        setMessage("De naam mag maximaal 32 tekens bevatten.");
+        return;
+      }
+
       if (!/^[A-Za-z0-9]{2,10}$/.test(ticker)) {
-        setMessage("Ticker moet 2 tot 10 letters of cijfers bevatten.");
+        setMessage(
+          "Ticker moet 2 tot 10 letters of cijfers bevatten."
+        );
+        return;
+      }
+
+      if (!selectedImage) {
+        setMessage("Selecteer eerst een logo.");
         return;
       }
 
@@ -202,9 +237,50 @@ export default function Home() {
       }
 
       setBusy(true);
-      setMessage("Testtoken wordt voorbereid...");
 
       const wallet = new PublicKey(walletAddress);
+
+      // Stap 1: afbeelding uploaden naar Pinata.
+      setMessage("Stap 1/4: logo wordt naar Pinata geüpload...");
+
+      const imageUpload = await uploadToPinata(selectedImage);
+
+      setImageUrl(imageUpload.url);
+
+      // Stap 2: metadata JSON maken en uploaden.
+      setMessage("Stap 2/4: coin-gegevens worden opgeslagen...");
+
+      const metadata = {
+        name: coinName.trim(),
+        symbol: ticker,
+        description: `${coinName.trim()} token on SOLANA.PUMP.`,
+        image: imageUpload.url,
+        external_url: "https://solana-pump-v2-pi.vercel.app/",
+        attributes: [],
+        properties: {
+          category: "image",
+          files: [
+            {
+              uri: imageUpload.url,
+              type: selectedImage.type,
+            },
+          ],
+        },
+      };
+
+      const metadataFile = new File(
+        [JSON.stringify(metadata, null, 2)],
+        `${ticker}-metadata.json`,
+        { type: "application/json" }
+      );
+
+      const metadataUpload = await uploadToPinata(metadataFile);
+
+      setMetadataUrl(metadataUpload.url);
+
+      // Stap 3: token en metadata voorbereiden.
+      setMessage("Stap 3/4: Solana-transactie wordt voorbereid...");
+
       const mint = Keypair.generate();
       const decimals = 6;
       const tokenAmount = amount * 1000000n;
@@ -230,13 +306,49 @@ export default function Home() {
           lamports: rent,
           programId: TOKEN_PROGRAM_ID,
         }),
+
         createInitializeMintInstruction(
           mint.publicKey,
           decimals,
           wallet,
           wallet,
           TOKEN_PROGRAM_ID
-        ),
+        )
+      );
+
+      // Metaplex metadata-instructie.
+      const umiWallet = fromWeb3JsPublicKey(wallet);
+
+      const metadataBuilder = createMetadataAccountV3(umi, {
+        mint: fromWeb3JsPublicKey(mint.publicKey),
+
+        mintAuthority: createNoopSigner(umiWallet),
+
+        payer: createNoopSigner(umiWallet),
+
+        updateAuthority: umiWallet,
+
+        data: {
+          name: coinName.trim(),
+          symbol: ticker,
+          uri: metadataUpload.url,
+          sellerFeeBasisPoints: 0,
+          creators: null,
+          collection: null,
+          uses: null,
+        },
+
+        isMutable: true,
+        collectionDetails: null,
+      });
+
+      const metadataInstructions =
+        metadataBuilder.getInstructions().map(toWeb3JsInstruction);
+
+      transaction.add(...metadataInstructions);
+
+      // Tokenaccount aanmaken en de voorraad minten.
+      transaction.add(
         createAssociatedTokenAccountInstruction(
           wallet,
           tokenAccount,
@@ -245,6 +357,7 @@ export default function Home() {
           TOKEN_PROGRAM_ID,
           ASSOCIATED_TOKEN_PROGRAM_ID
         ),
+
         createMintToInstruction(
           mint.publicKey,
           tokenAccount,
@@ -255,13 +368,19 @@ export default function Home() {
         )
       );
 
-      const latest = await connection.getLatestBlockhash("confirmed");
+      const latest =
+        await connection.getLatestBlockhash("confirmed");
 
       transaction.feePayer = wallet;
       transaction.recentBlockhash = latest.blockhash;
+
+      // De nieuwe mint-keypair tekent alvast.
       transaction.partialSign(mint);
 
-      setMessage("Controleer de transactie in Phantom...");
+      // Stap 4: Phantom ondertekent de volledige transactie.
+      setMessage(
+        "Stap 4/4: controleer en bevestig de transactie in Phantom..."
+      );
 
       const result = await provider.signAndSendTransaction(
         transaction,
@@ -278,7 +397,11 @@ export default function Home() {
       );
 
       setMintAddress(mint.publicKey.toString());
-      setMessage("Je testtoken is aangemaakt op Solana Devnet!");
+      setTransactionSignature(result.signature);
+
+      setMessage(
+        "Je testcoin met naam, ticker en logo is aangemaakt op Solana Devnet!"
+      );
     } catch (error) {
       console.error("Token creation error:", error);
 
@@ -305,7 +428,9 @@ export default function Home() {
               {walletAddress.slice(-4)} · Disconnect
             </button>
           ) : (
-            <button onClick={connectWallet}>Connect Phantom</button>
+            <button onClick={connectWallet}>
+              Connect Phantom
+            </button>
           )}
         </div>
       </header>
@@ -352,6 +477,7 @@ export default function Home() {
           onChange={(event) => setCoinName(event.target.value)}
           placeholder="My First Coin"
           maxLength={32}
+          disabled={busy}
         />
 
         <label htmlFor="ticker">Ticker</label>
@@ -363,6 +489,7 @@ export default function Home() {
           }
           placeholder="TEST"
           maxLength={10}
+          disabled={busy}
         />
 
         <label htmlFor="supply">Total supply</label>
@@ -373,19 +500,25 @@ export default function Home() {
           step="1"
           value={supply}
           onChange={(event) => setSupply(event.target.value)}
+          disabled={busy}
         />
 
-        <label htmlFor="coinImage">Coin logo (PNG, JPG of WEBP)</label>
+        <label htmlFor="coinImage">
+          Coin logo (PNG, JPG of WEBP)
+        </label>
+
         <input
           id="coinImage"
           type="file"
           accept="image/png,image/jpeg,image/webp"
           onChange={chooseImage}
+          disabled={busy}
         />
 
         {imagePreview && (
           <div>
             <p>Voorbeeld van je logo:</p>
+
             <img
               src={imagePreview}
               alt="Voorbeeld coin logo"
@@ -399,23 +532,6 @@ export default function Home() {
           </div>
         )}
 
-        <button
-          onClick={uploadImage}
-          disabled={!selectedImage || uploadBusy}
-        >
-          {uploadBusy ? "Uploading..." : "Upload logo to Pinata"}
-        </button>
-
-        {imageUrl && (
-          <div>
-            <p>Logo opgeslagen op IPFS:</p>
-            <a href={imageUrl} target="_blank" rel="noreferrer">
-              Bekijk geüploade afbeelding
-            </a>
-            <p>CID: {imageCid}</p>
-          </div>
-        )}
-
         <button onClick={createCoin} disabled={busy}>
           {busy ? "Creating..." : "Create Coin"}
         </button>
@@ -424,6 +540,7 @@ export default function Home() {
           <div>
             <p>Token mint address:</p>
             <p>{mintAddress}</p>
+
             <a
               href={`https://explorer.solana.com/address/${mintAddress}?cluster=devnet`}
               target="_blank"
@@ -434,10 +551,38 @@ export default function Home() {
           </div>
         )}
 
+        {transactionSignature && (
+          <div>
+            <p>Transaction:</p>
+            <a
+              href={`https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View transaction on Solana Explorer
+            </a>
+          </div>
+        )}
+
+        {imageUrl && (
+          <p>
+            <a href={imageUrl} target="_blank" rel="noreferrer">
+              Bekijk logo op Pinata
+            </a>
+          </p>
+        )}
+
+        {metadataUrl && (
+          <p>
+            <a href={metadataUrl} target="_blank" rel="noreferrer">
+              Bekijk coin metadata
+            </a>
+          </p>
+        )}
+
         <p>
           Devnet only. Phantom will ask you to approve the transaction.
-          The coin name, ticker and logo are not yet stored together
-          as on-chain metadata.
+          Token metadata is created using Metaplex.
         </p>
       </section>
 

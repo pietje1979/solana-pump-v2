@@ -8,8 +8,8 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
+
 import {
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
@@ -26,7 +26,9 @@ type PhantomProvider = {
   disconnect: () => Promise<void>;
   signAndSendTransaction: (
     transaction: Transaction,
-    options?: { preflightCommitment?: "processed" | "confirmed" | "finalized" }
+    options?: {
+      preflightCommitment?: "processed" | "confirmed" | "finalized";
+    }
   ) => Promise<{ signature: string }>;
 };
 
@@ -67,7 +69,8 @@ export default function Home() {
       const response = await provider.connect();
       setWalletAddress(response.publicKey.toString());
       setMessage("Phantom verbonden.");
-    } catch {
+    } catch (error) {
+      console.error(error);
       setMessage("Walletverbinding mislukt.");
     }
   }
@@ -77,7 +80,8 @@ export default function Home() {
       await getPhantom()?.disconnect();
       setWalletAddress("");
       setMessage("Wallet ontkoppeld.");
-    } catch {
+    } catch (error) {
+      console.error(error);
       setMessage("Ontkoppelen mislukt.");
     }
   }
@@ -197,10 +201,12 @@ export default function Home() {
       setMintAddress(mint.publicKey.toString());
       setMessage("Je testtoken is aangemaakt op Solana Devnet!");
     } catch (error) {
-      console.error(error);
-      setMessage(
-        "Tokenaanmaak mislukt. Controleer Phantom en of je Devnet SOL hebt."
-      );
+      console.error("Token creation error:", error);
+
+      const details =
+        error instanceof Error ? error.message : String(error);
+
+      setMessage("Tokenaanmaak mislukt: " + details);
     } finally {
       setBusy(false);
     }
@@ -212,6 +218,7 @@ export default function Home() {
         <div className="logo">
           SOLANA<span>.PUMP</span>
         </div>
+
         <div className="wallet">
           {walletAddress ? (
             <button onClick={disconnectWallet}>
@@ -229,7 +236,9 @@ export default function Home() {
           LAUNCH YOUR <span>MEMECOIN</span>
         </h1>
         <p>Create, launch and trade tokens on Solana.</p>
+
         {message && <p>{message}</p>}
+
         {walletAddress && (
           <p>Connected wallet: {walletAddress}</p>
         )}
@@ -240,10 +249,12 @@ export default function Home() {
           <h2>0.02 SOL</h2>
           <p>Planned coin launch fee</p>
         </div>
+
         <div>
           <h2>1%</h2>
           <p>Planned trading fee</p>
         </div>
+
         <div>
           <h2>Solana</h2>
           <p>Devnet testing</p>

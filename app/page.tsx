@@ -3,86 +3,107 @@
 
 import { useState } from "react";
 
-const coins = [
-  { name: "BONK", symbol: "$BONK", price: "$0.000021", change: "+12.4%", color: "#ff9c35" },
-  { name: "WIF", symbol: "$WIF", price: "$0.842", change: "+8.2%", color: "#d5a5ff" },
-  { name: "POPCAT", symbol: "$POPCAT", price: "$0.326", change: "+5.7%", color: "#ffdf6e" }
-];
+type PhantomProvider = {
+  isPhantom?: boolean;
+  publicKey?: { toString(): string };
+  connect: () => Promise<{ publicKey: { toString(): string } }>;
+  disconnect: () => Promise<void>;
+};
+
+declare global {
+  interface Window {
+    solana?: PhantomProvider;
+    phantom?: {
+      solana?: PhantomProvider;
+    };
+  }
+}
 
 export default function Home() {
-  const [search, setSearch] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [message, setMessage] = useState("");
 
-  const filteredCoins = coins.filter((coin) =>
-    `${coin.name} ${coin.symbol}`.toLowerCase().includes(search.toLowerCase())
-  );
+  async function connectWallet() {
+    try {
+      const provider = window.phantom?.solana ?? window.solana;
+
+      if (!provider || !provider.isPhantom) {
+        setMessage("Phantom wallet niet gevonden. Installeer Phantom eerst.");
+        return;
+      }
+
+      const response = await provider.connect();
+      setWalletAddress(response.publicKey.toString());
+      setMessage("Phantom wallet succesvol verbonden!");
+    } catch {
+      setMessage("Walletverbinding geannuleerd of mislukt.");
+    }
+  }
+
+  async function disconnectWallet() {
+    try {
+      const provider = window.phantom?.solana ?? window.solana;
+
+      if (provider) {
+        await provider.disconnect();
+      }
+
+      setWalletAddress("");
+      setMessage("Wallet ontkoppeld.");
+    } catch {
+      setMessage("Ontkoppelen is niet gelukt.");
+    }
+  }
 
   return (
     <main>
       <header className="header">
-        <a className="logo" href="/">SOLANA<span>.</span>PUMP</a>
-        <nav>
-          <a href="#explore">Explore</a>
-          <a href="#launch">Create coin</a>
-        </nav>
-        <button className="wallet" onClick={() => alert("Wallet connection will be added in the next development step.")}>
-          Connect wallet
-        </button>
+        <div className="logo">SOLANA<span>.PUMP</span></div>
+        <div className="wallet">
+          {walletAddress ? (
+            <button onClick={disconnectWallet}>
+              {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)} · Disconnect
+            </button>
+          ) : (
+            <button onClick={connectWallet}>Connect Phantom</button>
+          )}
+        </div>
       </header>
 
       <section className="hero">
-        <div className="eyebrow">THE SOLANA MEMECOIN LAUNCHPAD</div>
-        <h1>Discover the next<br /><span>big thing.</span></h1>
-        <p>Discover, launch and trade community-powered tokens on Solana.</p>
-        <div className="hero-actions">
-          <a className="primary" href="#explore">Explore coins ↗</a>
-          <a className="secondary" href="#launch">Create a coin</a>
-        </div>
-        <div className="notice">⚡ Built for Solana · Safety-first platform design</div>
+        <h1>LAUNCH YOUR <span>MEMECOIN</span></h1>
+        <p>Create, launch and trade tokens on Solana.</p>
+        <button onClick={connectWallet}>Connect Wallet</button>
+        {message && <p>{message}</p>}
+        {walletAddress && (
+          <p>Connected wallet: {walletAddress}</p>
+        )}
       </section>
 
       <section className="stats">
-        <div><strong>01</strong><span>Built on Solana</span></div>
-        <div><strong>1%</strong><span>Planned trading fee</span></div>
-        <div><strong>0.02 SOL</strong><span>Planned launch fee</span></div>
+        <div>
+          <h2>0.02 SOL</h2>
+          <p>Coin launch fee</p>
+        </div>
+        <div>
+          <h2>1%</h2>
+          <p>Trading fee</p>
+        </div>
+        <div>
+          <h2>Solana</h2>
+          <p>Blockchain</p>
+        </div>
       </section>
 
-      <section className="coins" id="explore">
-        <div className="section-heading">
-          <div><span className="eyebrow">THE MARKET</span><h2>Explore tokens</h2></div>
-          <input
-            placeholder="Search tokens..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-
-        <div className="coin-list">
-          {filteredCoins.map((coin) => (
-            <div className="coin" key={coin.symbol}>
-              <div className="coin-icon" style={{ background: coin.color }}>{coin.name[0]}</div>
-              <div className="coin-name"><strong>{coin.name}</strong><span>{coin.symbol}</span></div>
-              <div className="coin-price"><strong>{coin.price}</strong><span>Example price</span></div>
-              <div className="change">{coin.change}</div>
-              <span className="demo">DEMO</span>
-            </div>
-          ))}
-          {filteredCoins.length === 0 && <p className="empty">No matching demo tokens.</p>}
-        </div>
-        <p className="disclaimer">Demo data only. These are not live prices or connected token listings.</p>
-      </section>
-
-      <section className="launch" id="launch">
-        <span className="eyebrow">YOUR IDEA. YOUR TOKEN.</span>
-        <h2>Ready to launch<br /><span>something big?</span></h2>
-        <p>Token creation and wallet transactions are not active yet. We are building and testing the platform first.</p>
-        <button onClick={() => alert("Token creation will be enabled after the security and wallet integration is ready.")}>
-          Launch a token — coming soon
-        </button>
+      <section className="launch">
+        <h2>Launch your coin</h2>
+        <p>Connect your Phantom wallet to get started.</p>
+        <button onClick={connectWallet}>Connect Phantom</button>
       </section>
 
       <footer>
-        <a className="logo" href="/">SOLANA<span>.</span>PUMP</a>
-        <span>Built for the Solana community.</span>
+        <p>© 2026 SOLANA.PUMP — Built on Solana</p>
+        <p>Wallet connection only. No transactions are made.</p>
       </footer>
     </main>
   );

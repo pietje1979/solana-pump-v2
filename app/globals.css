@@ -44,3 +44,273 @@ a {
   background: var(--green);
   color: #090b10;
 }
+
+.header {
+  height: 76px;
+  padding: 0 7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.logo span,
+.hero h1 span,
+.launch h2 span {
+  color: var(--green);
+}
+
+.header nav {
+  display: flex;
+  gap: 32px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.wallet,
+.primary,
+.launch button {
+  border: 0;
+  border-radius: 8px;
+  padding: 13px 19px;
+  background: var(--green);
+  color: #090b10;
+  font-weight: 700;
+}
+
+.hero {
+  text-align: center;
+  padding: 115px 20px 95px;
+  background: radial-gradient(ellipse at 50% 0%, #1c2a15 0%, #090b10 62%);
+}
+
+.eyebrow {
+  color: var(--green);
+  font: 12px 'DM Mono', monospace;
+  letter-spacing: 2px;
+}
+
+.hero h1 {
+  font-size: clamp(48px, 8vw, 88px);
+  line-height: 1.02;
+  letter-spacing: -5px;
+  margin: 25px 0;
+}
+
+.hero p,
+.launch p {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.secondary {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 19px;
+}
+
+.notice {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 35px;
+}
+
+.stats {
+  display: flex;
+  justify-content: center;
+  gap: 100px;
+  padding: 30px 15px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.stats div,
+.coin-name,
+.coin-price {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stats strong {
+  font-size: 22px;
+}
+
+.stats span,
+.coin-name span,
+.coin-price span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.coins {
+  max-width: 1000px;
+  margin: 90px auto;
+  padding: 0 22px;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  margin-bottom: 25px;
+}
+
+h2 {
+  font-size: 34px;
+  margin: 10px 0;
+  letter-spacing: -1px;
+}
+
+.section-heading input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px;
+  color: white;
+}
+
+.coin-list {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.coin {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coin:last-child {
+  border-bottom: 0;
+}
+
+.coin-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #090b10;
+  font-weight: 700;
+}
+
+.coin-name {
+  flex: 1;
+}
+
+.coin-price {
+  min-width: 130px;
+}
+
+.change {
+  color: var(--green);
+  min-width: 75px;
+}
+
+.demo {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 7px;
+  font: 10px 'DM Mono', monospace;
+}
+
+.disclaimer,
+.empty {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 15px;
+}
+
+.launch {
+  text-align: center;
+  padding: 85px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.launch p {
+  max-width: 540px;
+  margin: 15px auto 25px;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30px 7%;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 650px) {
+  .header {
+    padding: 0 18px;
+  }
+
+  .header nav {
+    display: none;
+  }
+
+  .hero {
+    padding: 85px 18px;
+  }
+
+  .hero h1 {
+    letter-spacing: -2px;
+  }
+
+  .stats {
+    gap: 20px;
+    justify-content: space-around;
+  }
+
+  .stats strong {
+    font-size: 16px;
+  }
+
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .coin {
+    gap: 10px;
+    padding: 13px 9px;
+  }
+
+  .coin-price {
+    min-width: 90px;
+    font-size: 12px;
+  }
+
+  .change {
+    min-width: auto;
+    font-size: 12px;
+  }
+
+  footer {
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+}

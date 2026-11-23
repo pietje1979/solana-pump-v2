@@ -8,6 +8,10 @@ type PhantomProvider = {
   publicKey?: { toString(): string };
   connect: () => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;
+  request: (args: {
+    method: string;
+    params?: unknown[];
+  }) => Promise<unknown>;
 };
 
 declare global {
@@ -21,6 +25,7 @@ declare global {
 
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
+  const [network, setNetwork] = useState("Nog niet gecontroleerd");
   const [message, setMessage] = useState("");
 
   async function connectWallet() {
@@ -28,15 +33,26 @@ export default function Home() {
       const provider = window.phantom?.solana ?? window.solana;
 
       if (!provider || !provider.isPhantom) {
-        setMessage("Phantom wallet niet gevonden. Installeer Phantom eerst.");
+        setMessage("Phantom wallet niet gevonden.");
         return;
       }
 
       const response = await provider.connect();
       setWalletAddress(response.publicKey.toString());
-      setMessage("Phantom wallet succesvol verbonden!");
+
+      const endpoint = await provider.request({
+        method: "getCluster",
+      });
+
+      if (endpoint === "devnet") {
+        setNetwork("Solana Devnet");
+        setMessage("Verbonden met Solana Devnet!");
+      } else {
+        setNetwork(String(endpoint));
+        setMessage("Wallet verbonden. Controleer het netwerk in Phantom.");
+      }
     } catch {
-      setMessage("Walletverbinding geannuleerd of mislukt.");
+      setMessage("Verbinding of netwerkcontrole mislukt.");
     }
   }
 
@@ -49,6 +65,7 @@ export default function Home() {
       }
 
       setWalletAddress("");
+      setNetwork("Niet verbonden");
       setMessage("Wallet ontkoppeld.");
     } catch {
       setMessage("Ontkoppelen is niet gelukt.");
@@ -74,9 +91,14 @@ export default function Home() {
         <h1>LAUNCH YOUR <span>MEMECOIN</span></h1>
         <p>Create, launch and trade tokens on Solana.</p>
         <button onClick={connectWallet}>Connect Wallet</button>
+
         {message && <p>{message}</p>}
+
         {walletAddress && (
-          <p>Connected wallet: {walletAddress}</p>
+          <>
+            <p>Connected wallet: {walletAddress}</p>
+            <p>Network: {network}</p>
+          </>
         )}
       </section>
 
@@ -103,7 +125,7 @@ export default function Home() {
 
       <footer>
         <p>© 2026 SOLANA.PUMP — Built on Solana</p>
-        <p>Wallet connection only. No transactions are made.</p>
+        <p>Devnet testing only. No transactions are made.</p>
       </footer>
     </main>
   );

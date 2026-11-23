@@ -8,10 +8,6 @@ type PhantomProvider = {
   publicKey?: { toString(): string };
   connect: () => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;
-  request: (args: {
-    method: string;
-    params?: unknown[];
-  }) => Promise<unknown>;
 };
 
 declare global {
@@ -29,30 +25,49 @@ export default function Home() {
   const [message, setMessage] = useState("");
 
   async function connectWallet() {
+    const provider = window.phantom?.solana ?? window.solana;
+
+    if (!provider || !provider.isPhantom) {
+      setMessage("Phantom wallet niet gevonden.");
+      return;
+    }
+
     try {
-      const provider = window.phantom?.solana ?? window.solana;
-
-      if (!provider || !provider.isPhantom) {
-        setMessage("Phantom wallet niet gevonden.");
-        return;
-      }
-
       const response = await provider.connect();
       setWalletAddress(response.publicKey.toString());
+      setMessage("Phantom wallet succesvol verbonden!");
+    } catch {
+      setMessage("Phantom verbinding mislukt.");
+      return;
+    }
 
-      const endpoint = await provider.request({
-        method: "getCluster",
+    try {
+      const response = await fetch("https://api.devnet.solana.com", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getHealth",
+        }),
       });
 
-      if (endpoint === "devnet") {
-        setNetwork("Solana Devnet");
-        setMessage("Verbonden met Solana Devnet!");
+      const data = await response.json();
+
+      if (data.result === "ok") {
+        setNetwork("Solana Devnet RPC bereikbaar");
+        setMessage(
+          "Wallet verbonden. Devnet-server bereikbaar. Controleer ook het netwerk in Phantom."
+        );
       } else {
-        setNetwork(String(endpoint));
-        setMessage("Wallet verbonden. Controleer het netwerk in Phantom.");
+        setNetwork("Devnet niet bereikbaar");
+        setMessage("De Devnet-server reageert niet goed.");
       }
     } catch {
-      setMessage("Verbinding of netwerkcontrole mislukt.");
+      setNetwork("Controle mislukt");
+      setMessage("Wallet verbonden, maar Devnet-controle mislukt.");
     }
   }
 
@@ -97,7 +112,8 @@ export default function Home() {
         {walletAddress && (
           <>
             <p>Connected wallet: {walletAddress}</p>
-            <p>Network: {network}</p>
+            <p>Website network: {network}</p>
+            <p>Controleer dat Phantom zelf ook op Devnet staat.</p>
           </>
         )}
       </section>

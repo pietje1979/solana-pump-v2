@@ -327,6 +327,8 @@ export default function Home() {
   async function createCoin() {
     if (busy) return;
 
+    let tokenCreated = false;
+
     try {
       setMessage("");
       setMintAddress("");
@@ -384,11 +386,11 @@ export default function Home() {
 
       const wallet = new PublicKey(walletAddress);
 
-      setMessage("Stap 1/4: logo wordt naar Pinata geüpload...");
+      setMessage("Stap 1/5: logo wordt naar Pinata geüpload...");
       const imageUpload = await uploadToPinata(selectedImage);
       setImageUrl(imageUpload.url);
 
-      setMessage("Stap 2/4: coin-gegevens worden opgeslagen...");
+      setMessage("Stap 2/5: coin-gegevens worden opgeslagen...");
 
       const coinDescription =
         description.trim() ||
@@ -421,7 +423,7 @@ export default function Home() {
       const metadataUpload = await uploadToPinata(metadataFile);
       setMetadataUrl(metadataUpload.url);
 
-      setMessage("Stap 3/4: Solana-transactie wordt voorbereid...");
+      setMessage("Stap 3/5: Solana-transactie wordt voorbereid...");
 
       const mint = Keypair.generate();
       const decimals = 6;
@@ -501,7 +503,7 @@ export default function Home() {
         )
       );
 
-      // Trek beide bevoegdheden in dezelfde transactie in nadat de voorraad is aangemaakt.
+      // Trek beide bevoegdheden in dezelfde transactie in.
       transaction.add(
         createSetAuthorityInstruction(
           mint.publicKey,
@@ -527,7 +529,7 @@ export default function Home() {
       transaction.partialSign(mint);
 
       setMessage(
-        "Stap 4/4: controleer de tokenaanmaak en veiligheidsinstellingen in Phantom..."
+        "Stap 4/5: controleer de tokenaanmaak en veiligheidsinstellingen in Phantom..."
       );
 
       const result = await provider.signAndSendTransaction(transaction, {
@@ -547,8 +549,12 @@ export default function Home() {
         throw new Error("De tokenaanmaak is niet geslaagd.");
       }
 
-      setMintAddress(mint.publicKey.toString());
-      setAuthorityMintAddress(mint.publicKey.toString());
+      tokenCreated = true;
+
+      const newMintAddress = mint.publicKey.toString();
+
+      setMintAddress(newMintAddress);
+      setAuthorityMintAddress(newMintAddress);
       setTransactionSignature(result.signature);
 
       const createdMint = await getMint(
@@ -559,22 +565,72 @@ export default function Home() {
       );
 
       if (
-        createdMint.mintAuthority === null &&
-        createdMint.freezeAuthority === null
+        createdMint.mintAuthority !== null ||
+        createdMint.freezeAuthority !== null
       ) {
         setMessage(
-          "Je testcoin is aangemaakt. Mint Authority en Freeze Authority zijn direct ingetrokken."
+          "De coin is aangemaakt, maar de beveiligingscontrole is niet geslaagd. De coin wordt daarom niet geregistreerd."
         );
-      } else {
-        setMessage(
-          "Je testcoin is aangemaakt. Let op: controle van de bevoegdheden is nog niet afgerond."
-        );
+        return;
       }
+
+      setMessage(
+        "Stap 5/5: beveiligde registratie in Supabase..."
+      );
+
+      const registrationResponse = await fetch(
+        "/api/register-coin",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mintAddress: newMintAddress,
+            name: coinName.trim(),
+            ticker: ticker.toUpperCase(),
+            description: coinDescription,
+            imageUrl: imageUpload.url,
+            metadataUrl: metadataUpload.url,
+            transactionSignature: result.signature,
+            walletAddress,
+          }),
+        }
+      );
+
+      const registrationResult = await registrationResponse.json();
+
+      if (!registrationResponse.ok || !registrationResult.success) {
+        console.error(
+          "Supabase registration error:",
+          registrationResult
+        );
+
+        setMessage(
+          "Je coin is aangemaakt en beveiligd op Devnet, maar opslaan in het coin-overzicht is mislukt. Bewaar je mintadres: " +
+            newMintAddress +
+            ". Melding: " +
+            (registrationResult.error || "Onbekende fout.")
+        );
+        return;
+      }
+
+      setMessage(
+        "Gelukt! Je coin is aangemaakt, beide bevoegdheden zijn ingetrokken en de coin is opgeslagen in Supabase."
+      );
     } catch (error) {
       console.error("Token creation error:", error);
       const details =
         error instanceof Error ? error.message : String(error);
-      setMessage("Tokenaanmaak mislukt: " + details);
+
+      if (tokenCreated) {
+        setMessage(
+          "Je coin is al aangemaakt op Devnet, maar een volgende stap is mislukt: " +
+            details
+        );
+      } else {
+        setMessage("Tokenaanmaak mislukt: " + details);
+      }
     } finally {
       setBusy(false);
     }

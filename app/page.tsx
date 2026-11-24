@@ -66,9 +66,10 @@ const DEFAULT_TEST_MINT = "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
 
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
-  const [coinName, setCoinName] = useState("");
-  const [ticker, setTicker] = useState("");
-  const [supply, setSupply] = useState("1000000000");
+ const [coinName, setCoinName] = useState("");
+const [ticker, setTicker] = useState("");
+const [description, setDescription] = useState("");
+const [supply, setSupply] = useState("1000000000");
 
   const [message, setMessage] = useState("");
   const [mintAddress, setMintAddress] = useState("");

@@ -633,7 +633,17 @@ const [supply, setSupply] = useState("1000000000");
           maxLength={10}
           disabled={busy}
         />
-
+        <label htmlFor="description">Coin description / Your story</label>
+<textarea
+  id="description"
+  value={description}
+  onChange={(event) => setDescription(event.target.value)}
+  placeholder="Vertel waar jouw coin voor staat, wat de missie is en welke community je wilt bouwen..."
+  maxLength={1000}
+  rows={5}
+  disabled={busy}
+/>
+<p>{description.length}/1000 tekens</p>
         <label htmlFor="supply">Total supply</label>
         <input
           id="supply"

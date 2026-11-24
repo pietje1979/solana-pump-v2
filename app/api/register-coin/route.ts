@@ -10,7 +10,6 @@ const connection = new Connection(
   "confirmed"
 );
 
-// Alleen-lezen controle van de Supabase-verbinding
 export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const secret = process.env.SUPABASE_SECRET_KEY;
@@ -33,7 +32,6 @@ export async function GET() {
       {
         headers: {
           apikey: secret,
-          Authorization: `Bearer ${secret}`,
         },
         cache: "no-store",
       }
@@ -41,14 +39,19 @@ export async function GET() {
 
     if (!response.ok) {
       const details = await response.text();
-      console.error("Supabase controle mislukt:", response.status, details);
+
+      console.error(
+        "Supabase controle mislukt:",
+        response.status,
+        details
+      );
 
       return NextResponse.json(
         {
           success: false,
           database: "Niet verbonden",
           status: response.status,
-          error: "Supabase kon de coins-tabel niet ophalen.",
+          details,
         },
         { status: 500 }
       );
@@ -73,15 +76,12 @@ export async function GET() {
   }
 }
 
-// Registratie van een bestaande, bevestigde Devnet-token
 export async function POST(request: NextRequest) {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const secret = process.env.SUPABASE_SECRET_KEY;
 
     if (!url || !secret) {
-      console.error("Register coin: Supabase-instellingen ontbreken.");
-
       return NextResponse.json(
         { error: "Database-instellingen ontbreken." },
         { status: 500 }
@@ -129,32 +129,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      typeof imageUrl !== "undefined" &&
-      imageUrl !== null &&
-      typeof imageUrl !== "string"
-    ) {
-      return NextResponse.json(
-        { error: "Ongeldige afbeeldings-URL." },
-        { status: 400 }
-      );
-    }
-
-    if (
-      typeof metadataUrl !== "undefined" &&
-      metadataUrl !== null &&
-      typeof metadataUrl !== "string"
-    ) {
-      return NextResponse.json(
-        { error: "Ongeldige metadata-URL." },
-        { status: 400 }
-      );
-    }
-
     const mint = new PublicKey(mintAddress);
     const wallet = new PublicKey(walletAddress);
-
-    console.log("Register coin: Solana-transactie controleren.");
 
     const transaction = await connection.getParsedTransaction(
       transactionSignature,
@@ -256,15 +232,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Register coin: veiligheidscontroles geslaagd.");
-    console.log("Register coin: coin naar Supabase versturen.");
-
     const response = await fetch(`${url}/rest/v1/coins`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey: secret,
-        Authorization: `Bearer ${secret}`,
         Prefer: "return=representation",
       },
       body: JSON.stringify({
@@ -283,7 +255,7 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
 
       console.error(
-        "Register coin: Supabase opslag mislukt:",
+        "Supabase opslag mislukt:",
         response.status,
         errorText
       );
@@ -298,8 +270,6 @@ export async function POST(request: NextRequest) {
     }
 
     const savedCoin = await response.json();
-
-    console.log("Register coin: succesvol opgeslagen.");
 
     return NextResponse.json({
       success: true,

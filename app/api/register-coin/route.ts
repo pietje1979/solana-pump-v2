@@ -30,9 +30,7 @@ export async function GET() {
     const response = await fetch(
       `${url}/rest/v1/coins?select=id&limit=1`,
       {
-        headers: {
-          apikey: secret,
-        },
+        headers: { apikey: secret },
         cache: "no-store",
       }
     );
@@ -40,11 +38,7 @@ export async function GET() {
     if (!response.ok) {
       const details = await response.text();
 
-      console.error(
-        "Supabase controle mislukt:",
-        response.status,
-        details
-      );
+      console.error("Supabase controle mislukt:", details);
 
       return NextResponse.json(
         {
@@ -70,6 +64,7 @@ export async function GET() {
       {
         success: false,
         error: "Verbinding met Supabase mislukt.",
+        details: String(error),
       },
       { status: 500 }
     );
@@ -77,16 +72,22 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  let stage = "Start registratie";
+
   try {
+    stage = "Supabase-instellingen controleren";
+
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const secret = process.env.SUPABASE_SECRET_KEY;
 
     if (!url || !secret) {
       return NextResponse.json(
-        { error: "Database-instellingen ontbreken." },
+        { error: "Database-instellingen ontbreken.", stage },
         { status: 500 }
       );
     }
+
+    stage = "Gegevens ontvangen";
 
     const body = await request.json();
 
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
       !walletAddress
     ) {
       return NextResponse.json(
-        { error: "Verplichte gegevens ontbreken." },
+        { error: "Verplichte gegevens ontbreken.", stage },
         { status: 400 }
       );
     }
@@ -124,13 +125,17 @@ export async function POST(request: NextRequest) {
       description.length > 1000
     ) {
       return NextResponse.json(
-        { error: "Ongeldige coin-gegevens." },
+        { error: "Ongeldige coin-gegevens.", stage },
         { status: 400 }
       );
     }
 
+    stage = "Wallet- en mintadres controleren";
+
     const mint = new PublicKey(mintAddress);
     const wallet = new PublicKey(walletAddress);
+
+    stage = "Solana-transactie controleren";
 
     const transaction = await connection.getParsedTransaction(
       transactionSignature,
@@ -142,7 +147,10 @@ export async function POST(request: NextRequest) {
 
     if (!transaction || transaction.meta?.err) {
       return NextResponse.json(
-        { error: "Solana-transactie niet geldig of niet bevestigd." },
+        {
+          error: "Solana-transactie niet geldig of niet bevestigd.",
+          stage,
+        },
         { status: 400 }
       );
     }
@@ -152,7 +160,10 @@ export async function POST(request: NextRequest) {
 
     if (feePayer !== wallet.toString()) {
       return NextResponse.json(
-        { error: "Wallet komt niet overeen met de transactie." },
+        {
+          error: "Wallet komt niet overeen met de transactie.",
+          stage,
+        },
         { status: 403 }
       );
     }
@@ -163,10 +174,15 @@ export async function POST(request: NextRequest) {
 
     if (!mintIsInTransaction) {
       return NextResponse.json(
-        { error: "Mintadres staat niet in de transactie." },
+        {
+          error: "Mintadres staat niet in de transactie.",
+          stage,
+        },
         { status: 400 }
       );
     }
+
+    stage = "Token- en veiligheidsinstructies controleren";
 
     const instructions = transaction.transaction.message.instructions;
 
@@ -208,10 +224,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Tokenaanmaak of veiligheidscontroles niet bevestigd.",
+          stage,
+          checks: {
+            initializeMint: Boolean(initializeInstruction),
+            mintAuthorityRevoked: revokedMint,
+            freezeAuthorityRevoked: revokedFreeze,
+          },
         },
         { status: 400 }
       );
     }
+
+    stage = "Mint-authoriteiten op de blockchain controleren";
 
     const mintInfo = await getMint(
       connection,
@@ -227,10 +251,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Mint- en Freeze Authority zijn niet beide ingetrokken.",
+          stage,
         },
         { status: 400 }
       );
     }
+
+    stage = "Coin opslaan in Supabase";
 
     const response = await fetch(`${url}/rest/v1/coins`, {
       method: "POST",
@@ -263,6 +290,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Opslaan in database mislukt.",
+          stage,
+          status: response.status,
           details: errorText,
         },
         { status: response.status }
@@ -271,15 +300,37 @@ export async function POST(request: NextRequest) {
 
     const savedCoin = await response.json();
 
+    if (!Array.isArray(savedCoin) || savedCoin.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Supabase heeft geen opgeslagen coin teruggegeven.",
+          stage,
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       coin: savedCoin[0],
     });
   } catch (error) {
-    console.error("Register coin error:", error);
+    const details =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    console.error("Register coin error:", {
+      stage,
+      details,
+    });
 
     return NextResponse.json(
-      { error: "Coin registreren mislukt." },
+      {
+        error: "Coin registreren mislukt.",
+        stage,
+        details,
+      },
       { status: 500 }
     );
   }

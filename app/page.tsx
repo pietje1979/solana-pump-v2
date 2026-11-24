@@ -1,8 +1,6 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-
 import {
   Connection,
   Keypair,
@@ -15,10 +13,13 @@ import {
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  AuthorityType,
   createInitializeMintInstruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
+  createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
+  getMint,
 } from "@solana/spl-token";
 
 import {
@@ -26,14 +27,8 @@ import {
   mplTokenMetadata,
 } from "@metaplex-foundation/mpl-token-metadata";
 
-import {
-  createNoopSigner,
-} from "@metaplex-foundation/umi";
-
-import {
-  createUmi,
-} from "@metaplex-foundation/umi-bundle-defaults";
-
+import { createNoopSigner } from "@metaplex-foundation/umi";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   fromWeb3JsPublicKey,
   toWeb3JsInstruction,
@@ -63,9 +58,11 @@ const connection = new Connection(
   "confirmed"
 );
 
-const umi = createUmi(
-  "https://api.devnet.solana.com"
-).use(mplTokenMetadata());
+const umi = createUmi("https://api.devnet.solana.com").use(
+  mplTokenMetadata()
+);
+
+const DEFAULT_TEST_MINT = "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
 
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
@@ -75,7 +72,10 @@ export default function Home() {
 
   const [message, setMessage] = useState("");
   const [mintAddress, setMintAddress] = useState("");
+  const [authorityMintAddress, setAuthorityMintAddress] =
+    useState(DEFAULT_TEST_MINT);
   const [transactionSignature, setTransactionSignature] = useState("");
+  const [securitySignature, setSecuritySignature] = useState("");
 
   const [busy, setBusy] = useState(false);
 
@@ -110,7 +110,6 @@ export default function Home() {
       }
 
       const response = await provider.connect();
-
       setWalletAddress(response.publicKey.toString());
       setMessage("Phantom verbonden.");
     } catch (error) {
@@ -122,7 +121,6 @@ export default function Home() {
   async function disconnectWallet() {
     try {
       await getPhantom()?.disconnect();
-
       setWalletAddress("");
       setMessage("Wallet ontkoppeld.");
     } catch (error) {
@@ -133,14 +131,9 @@ export default function Home() {
 
   function chooseImage(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-
     if (!file) return;
 
-    const allowedTypes = [
-      "image/png",
-      "image/jpeg",
-      "image/webp",
-    ];
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
 
     if (!allowedTypes.includes(file.type)) {
       setMessage("Gebruik PNG, JPG of WEBP.");
@@ -183,6 +176,145 @@ export default function Home() {
       url: result.url as string,
       cid: result.cid as string,
     };
+  }
+
+  async function revokeTokenAuthorities() {
+    if (busy) return;
+
+    try {
+      setBusy(true);
+      setMessage("");
+
+      const provider = getPhantom();
+
+      if (!provider?.isPhantom) {
+        setMessage("Phantom wallet niet gevonden.");
+        return;
+      }
+
+      if (!walletAddress) {
+        setMessage("Verbind eerst je Phantom wallet.");
+        return;
+      }
+
+      let mintPublicKey: PublicKey;
+      try {
+        mintPublicKey = new PublicKey(authorityMintAddress.trim());
+      } catch {
+        setMessage("Het tokenadres is ongeldig. Controleer het mintadres.");
+        return;
+      }
+
+      const wallet = new PublicKey(walletAddress);
+      const mintInfo = await getMint(
+        connection,
+        mintPublicKey,
+        "confirmed",
+        TOKEN_PROGRAM_ID
+      );
+
+      const transaction = new Transaction();
+      let instructionsAdded = 0;
+
+      if (mintInfo.mintAuthority?.equals(wallet)) {
+        transaction.add(
+          createSetAuthorityInstruction(
+            mintPublicKey,
+            wallet,
+            AuthorityType.MintTokens,
+            null,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
+        instructionsAdded++;
+      } else if (mintInfo.mintAuthority !== null) {
+        setMessage(
+          "De verbonden wallet is niet de Mint Authority van deze munt. Er is niets gewijzigd."
+        );
+        return;
+      }
+
+      if (mintInfo.freezeAuthority?.equals(wallet)) {
+        transaction.add(
+          createSetAuthorityInstruction(
+            mintPublicKey,
+            wallet,
+            AuthorityType.FreezeAccount,
+            null,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
+        instructionsAdded++;
+      } else if (mintInfo.freezeAuthority !== null) {
+        setMessage(
+          "De verbonden wallet is niet de Freeze Authority van deze munt. Er is niets gewijzigd."
+        );
+        return;
+      }
+
+      if (instructionsAdded === 0) {
+        setMessage(
+          "Beide bevoegdheden zijn al ingetrokken. Niemand kan extra tokens bijmaken of tokens bevriezen."
+        );
+        return;
+      }
+
+      const latest = await connection.getLatestBlockhash("confirmed");
+      transaction.feePayer = wallet;
+      transaction.recentBlockhash = latest.blockhash;
+
+      setMessage(
+        "Controleer de beveiligingstransactie in Phantom en bevestig deze."
+      );
+
+      const result = await provider.signAndSendTransaction(transaction, {
+        preflightCommitment: "confirmed",
+      });
+
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature: result.signature,
+          blockhash: latest.blockhash,
+          lastValidBlockHeight: latest.lastValidBlockHeight,
+        },
+        "confirmed"
+      );
+
+      if (confirmation.value.err) {
+        throw new Error("De beveiligingstransactie is niet geslaagd.");
+      }
+
+      setSecuritySignature(result.signature);
+
+      const updatedMint = await getMint(
+        connection,
+        mintPublicKey,
+        "confirmed",
+        TOKEN_PROGRAM_ID
+      );
+
+      if (
+        updatedMint.mintAuthority === null &&
+        updatedMint.freezeAuthority === null
+      ) {
+        setMessage(
+          "Veiligheidscontrole geslaagd: Mint Authority en Freeze Authority zijn ingetrokken."
+        );
+      } else {
+        setMessage(
+          "Transactie bevestigd. Controleer de resterende bevoegdheid opnieuw."
+        );
+      }
+    } catch (error) {
+      console.error("Authority revocation error:", error);
+      const details =
+        error instanceof Error ? error.message : String(error);
+      setMessage("Beveiliging mislukt: " + details);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function createCoin() {
@@ -240,16 +372,11 @@ export default function Home() {
 
       const wallet = new PublicKey(walletAddress);
 
-      // Stap 1: afbeelding uploaden naar Pinata.
       setMessage("Stap 1/4: logo wordt naar Pinata geüpload...");
-
       const imageUpload = await uploadToPinata(selectedImage);
-
       setImageUrl(imageUpload.url);
 
-      // Stap 2: metadata JSON maken en uploaden.
       setMessage("Stap 2/4: coin-gegevens worden opgeslagen...");
-
       const metadata = {
         name: coinName.trim(),
         symbol: ticker,
@@ -275,12 +402,9 @@ export default function Home() {
       );
 
       const metadataUpload = await uploadToPinata(metadataFile);
-
       setMetadataUrl(metadataUpload.url);
 
-      // Stap 3: token en metadata voorbereiden.
       setMessage("Stap 3/4: Solana-transactie wordt voorbereid...");
-
       const mint = Keypair.generate();
       const decimals = 6;
       const tokenAmount = amount * 1000000n;
@@ -306,7 +430,6 @@ export default function Home() {
           lamports: rent,
           programId: TOKEN_PROGRAM_ID,
         }),
-
         createInitializeMintInstruction(
           mint.publicKey,
           decimals,
@@ -316,18 +439,13 @@ export default function Home() {
         )
       );
 
-      // Metaplex metadata-instructie.
       const umiWallet = fromWeb3JsPublicKey(wallet);
 
       const metadataBuilder = createMetadataAccountV3(umi, {
         mint: fromWeb3JsPublicKey(mint.publicKey),
-
         mintAuthority: createNoopSigner(umiWallet),
-
         payer: createNoopSigner(umiWallet),
-
         updateAuthority: umiWallet,
-
         data: {
           name: coinName.trim(),
           symbol: ticker,
@@ -337,7 +455,6 @@ export default function Home() {
           collection: null,
           uses: null,
         },
-
         isMutable: true,
         collectionDetails: null,
       });
@@ -347,7 +464,6 @@ export default function Home() {
 
       transaction.add(...metadataInstructions);
 
-      // Tokenaccount aanmaken en de voorraad minten.
       transaction.add(
         createAssociatedTokenAccountInstruction(
           wallet,
@@ -357,7 +473,6 @@ export default function Home() {
           TOKEN_PROGRAM_ID,
           ASSOCIATED_TOKEN_PROGRAM_ID
         ),
-
         createMintToInstruction(
           mint.publicKey,
           tokenAccount,
@@ -368,26 +483,40 @@ export default function Home() {
         )
       );
 
-      const latest =
-        await connection.getLatestBlockhash("confirmed");
+      // Trek beide bevoegdheden in dezelfde transactie in nadat de voorraad is aangemaakt.
+      transaction.add(
+        createSetAuthorityInstruction(
+          mint.publicKey,
+          wallet,
+          AuthorityType.MintTokens,
+          null,
+          [],
+          TOKEN_PROGRAM_ID
+        ),
+        createSetAuthorityInstruction(
+          mint.publicKey,
+          wallet,
+          AuthorityType.FreezeAccount,
+          null,
+          [],
+          TOKEN_PROGRAM_ID
+        )
+      );
 
+      const latest = await connection.getLatestBlockhash("confirmed");
       transaction.feePayer = wallet;
       transaction.recentBlockhash = latest.blockhash;
-
-      // De nieuwe mint-keypair tekent alvast.
       transaction.partialSign(mint);
 
-      // Stap 4: Phantom ondertekent de volledige transactie.
       setMessage(
-        "Stap 4/4: controleer en bevestig de transactie in Phantom..."
+        "Stap 4/4: controleer de tokenaanmaak en veiligheidsinstellingen in Phantom..."
       );
 
-      const result = await provider.signAndSendTransaction(
-        transaction,
-        { preflightCommitment: "confirmed" }
-      );
+      const result = await provider.signAndSendTransaction(transaction, {
+        preflightCommitment: "confirmed",
+      });
 
-      await connection.confirmTransaction(
+      const confirmation = await connection.confirmTransaction(
         {
           signature: result.signature,
           blockhash: latest.blockhash,
@@ -396,18 +525,37 @@ export default function Home() {
         "confirmed"
       );
 
+      if (confirmation.value.err) {
+        throw new Error("De tokenaanmaak is niet geslaagd.");
+      }
+
       setMintAddress(mint.publicKey.toString());
+      setAuthorityMintAddress(mint.publicKey.toString());
       setTransactionSignature(result.signature);
 
-      setMessage(
-        "Je testcoin met naam, ticker en logo is aangemaakt op Solana Devnet!"
+      const createdMint = await getMint(
+        connection,
+        mint.publicKey,
+        "confirmed",
+        TOKEN_PROGRAM_ID
       );
+
+      if (
+        createdMint.mintAuthority === null &&
+        createdMint.freezeAuthority === null
+      ) {
+        setMessage(
+          "Je testcoin is aangemaakt. Mint Authority en Freeze Authority zijn direct ingetrokken."
+        );
+      } else {
+        setMessage(
+          "Je testcoin is aangemaakt. Let op: controle van de bevoegdheden is nog niet afgerond."
+        );
+      }
     } catch (error) {
       console.error("Token creation error:", error);
-
       const details =
         error instanceof Error ? error.message : String(error);
-
       setMessage("Tokenaanmaak mislukt: " + details);
     } finally {
       setBusy(false);
@@ -423,12 +571,12 @@ export default function Home() {
 
         <div className="wallet">
           {walletAddress ? (
-            <button onClick={disconnectWallet}>
+            <button onClick={disconnectWallet} disabled={busy}>
               {walletAddress.slice(0, 4)}...
               {walletAddress.slice(-4)} · Disconnect
             </button>
           ) : (
-            <button onClick={connectWallet}>
+            <button onClick={connectWallet} disabled={busy}>
               Connect Phantom
             </button>
           )}
@@ -439,14 +587,9 @@ export default function Home() {
         <h1>
           LAUNCH YOUR <span>MEMECOIN</span>
         </h1>
-
         <p>Create, launch and trade tokens on Solana.</p>
-
         {message && <p>{message}</p>}
-
-        {walletAddress && (
-          <p>Connected wallet: {walletAddress}</p>
-        )}
+        {walletAddress && <p>Connected wallet: {walletAddress}</p>}
       </section>
 
       <section className="stats">
@@ -454,12 +597,10 @@ export default function Home() {
           <h2>0.02 SOL</h2>
           <p>Planned coin launch fee</p>
         </div>
-
         <div>
           <h2>1%</h2>
           <p>Planned trading fee</p>
         </div>
-
         <div>
           <h2>Solana</h2>
           <p>Devnet testing</p>
@@ -506,7 +647,6 @@ export default function Home() {
         <label htmlFor="coinImage">
           Coin logo (PNG, JPG of WEBP)
         </label>
-
         <input
           id="coinImage"
           type="file"
@@ -518,7 +658,6 @@ export default function Home() {
         {imagePreview && (
           <div>
             <p>Voorbeeld van je logo:</p>
-
             <img
               src={imagePreview}
               alt="Voorbeeld coin logo"
@@ -540,7 +679,6 @@ export default function Home() {
           <div>
             <p>Token mint address:</p>
             <p>{mintAddress}</p>
-
             <a
               href={`https://explorer.solana.com/address/${mintAddress}?cluster=devnet`}
               target="_blank"
@@ -579,10 +717,52 @@ export default function Home() {
             </a>
           </p>
         )}
+      </section>
+
+      <section className="launch">
+        <h2>Token security</h2>
+        <p>
+          Trek Mint Authority en Freeze Authority in voor een bestaande
+          Devnet-token. Dit kan niet ongedaan worden gemaakt.
+        </p>
+
+        <label htmlFor="authorityMintAddress">
+          Token mint address
+        </label>
+        <input
+          id="authorityMintAddress"
+          value={authorityMintAddress}
+          onChange={(event) =>
+            setAuthorityMintAddress(event.target.value.trim())
+          }
+          placeholder="Plak hier het token mint address"
+          disabled={busy}
+        />
+
+        <button
+          onClick={revokeTokenAuthorities}
+          disabled={busy || !walletAddress}
+        >
+          {busy ? "Bezig..." : "Revoke Mint & Freeze Authority"}
+        </button>
+
+        {securitySignature && (
+          <p>
+            Security transaction:{" "}
+            <a
+              href={`https://explorer.solana.com/tx/${securitySignature}?cluster=devnet`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Bekijk op Solana Explorer
+            </a>
+          </p>
+        )}
 
         <p>
-          Devnet only. Phantom will ask you to approve the transaction.
-          Token metadata is created using Metaplex.
+          Let op: deze twee instellingen voorkomen niet iedere mogelijke
+          rugpull. Liquiditeit en andere risico's moeten apart worden
+          gecontroleerd en beveiligd.
         </p>
       </section>
 

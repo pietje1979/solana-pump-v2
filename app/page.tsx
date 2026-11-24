@@ -606,11 +606,20 @@ export default function Home() {
           registrationResult
         );
 
+        const errorDetails =
+          typeof registrationResult.details === "string"
+            ? registrationResult.details
+            : registrationResult.details
+              ? JSON.stringify(registrationResult.details)
+              : "Geen aanvullende foutdetails ontvangen.";
+
         setMessage(
           "Je coin is aangemaakt en beveiligd op Devnet, maar opslaan in het coin-overzicht is mislukt. Bewaar je mintadres: " +
             newMintAddress +
-            ". Melding: " +
-            (registrationResult.error || "Onbekende fout.")
+            ". Fout: " +
+            (registrationResult.error || "Onbekende fout.") +
+            " Details: " +
+            errorDetails
         );
         return;
       }

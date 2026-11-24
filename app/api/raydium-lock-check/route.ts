@@ -32,6 +32,9 @@ export async function GET() {
       expectedProgramMatchesSdk:
         Boolean(sdkLockProgram) &&
         new PublicKey(sdkLockProgram).equals(expectedLockProgram),
+
+      raydiumClassExported: Boolean(RaydiumSdk.Raydium),
+      cpmmModuleExported: Boolean(RaydiumSdk.Cpmm),
     };
 
     return NextResponse.json({
@@ -45,7 +48,7 @@ export async function GET() {
       allChecksPassed: Object.values(checks).every(Boolean),
       transactionsSent: false,
       message:
-        "Configuratie gecontroleerd. Er is geen liquiditeit vergrendeld.",
+        "Raydium SDK exports gecontroleerd. Er is geen liquiditeit vergrendeld.",
     });
   } catch (error) {
     return NextResponse.json(

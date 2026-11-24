@@ -28,7 +28,6 @@ function readMetadataString(
 
 async function getCoinData(mintAddress: string) {
   const mint = new PublicKey(mintAddress);
-
   const mintAccount = await connection.getParsedAccountInfo(mint);
 
   if (!mintAccount.value) {
@@ -54,13 +53,7 @@ async function getCoinData(mintAddress: string) {
 
   const metadataAccount = await connection.getAccountInfo(metadataAddress);
 
-  let metadata: {
-    name: string;
-    symbol: string;
-    uri: string;
-    description: string;
-    image: string;
-  } = {
+  const metadata = {
     name: "",
     symbol: "",
     uri: "",
@@ -70,7 +63,6 @@ async function getCoinData(mintAddress: string) {
 
   if (metadataAccount) {
     const data = metadataAccount.data;
-
     let offset = 1 + 32 + 32;
 
     const name = readMetadataString(data, offset);
@@ -103,7 +95,7 @@ async function getCoinData(mintAddress: string) {
             typeof json.image === "string" ? json.image : "";
         }
       } catch {
-        // De on-chain metadata blijft zichtbaar als de externe metadata niet bereikbaar is.
+        // On-chain metadata blijft beschikbaar.
       }
     }
   }
@@ -116,6 +108,37 @@ async function getCoinData(mintAddress: string) {
     freezeAuthority: mintInfo.freezeAuthority ?? null,
     metadata,
   };
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "15px 0",
+        borderBottom: "1px solid #292e38",
+      }}
+    >
+      <p style={{ color: "#9299a6", margin: "0 0 7px", fontSize: "13px" }}>
+        {label}
+      </p>
+      <p
+        style={{
+          color: "white",
+          margin: 0,
+          overflowWrap: "anywhere",
+          fontSize: "15px",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
 }
 
 export default async function CoinPage({
@@ -131,131 +154,233 @@ export default async function CoinPage({
     const authoritiesRevoked =
       coin.mintAuthority === null && coin.freezeAuthority === null;
 
+    const totalSupply = (
+      Number(coin.supply) / 10 ** coin.decimals
+    ).toLocaleString("en-US");
+
     return (
       <main
         style={{
-          maxWidth: "850px",
-          margin: "0 auto",
-          padding: "40px 20px",
+          minHeight: "100vh",
+          background: "#090b10",
           color: "white",
+          padding: "30px 18px 60px",
         }}
       >
-        <a href="/" style={{ color: "#a3ff12" }}>
-          ← Terug naar SOLANA.PUMP
-        </a>
-
-        <h1 style={{ marginTop: "35px" }}>
-          {coin.metadata.name || "Solana Coin"}
-        </h1>
-
-        <p style={{ color: "#a3ff12" }}>
-          {coin.metadata.symbol
-            ? `$${coin.metadata.symbol}`
-            : "Token"}
-        </p>
-
-        {coin.metadata.image && (
-          <img
-            src={coin.metadata.image}
-            alt={coin.metadata.name || "Coin logo"}
-            style={{
-              width: "180px",
-              height: "180px",
-              objectFit: "cover",
-              borderRadius: "20px",
-              margin: "20px 0",
-            }}
-          />
-        )}
-
-        <section
-          style={{
-            background: "#151922",
-            padding: "24px",
-            borderRadius: "16px",
-            marginTop: "20px",
-          }}
-        >
-          <h2>Het verhaal van deze coin</h2>
-          <p style={{ whiteSpace: "pre-wrap" }}>
-            {coin.metadata.description ||
-              "Er is nog geen beschrijving beschikbaar."}
-          </p>
-        </section>
-
-        <section
-          style={{
-            background: "#151922",
-            padding: "24px",
-            borderRadius: "16px",
-            marginTop: "20px",
-          }}
-        >
-          <h2>Coin informatie</h2>
-
-          <p>
-            <strong>Totale voorraad:</strong>{" "}
-            {(Number(coin.supply) / 10 ** coin.decimals).toLocaleString(
-              "en-US"
-            )}
-          </p>
-
-          <p>
-            <strong>Decimals:</strong> {coin.decimals}
-          </p>
-
-          <p>
-            <strong>Mint adres:</strong>
-          </p>
-
-          <p style={{ overflowWrap: "anywhere" }}>
-            {coin.mintAddress}
-          </p>
-
+        <div style={{ maxWidth: "680px", margin: "0 auto" }}>
           <a
-            href={`https://explorer.solana.com/address/${coin.mintAddress}?cluster=devnet`}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "#a3ff12" }}
+            href="/"
+            style={{
+              color: "#a3ff12",
+              textDecoration: "none",
+              fontSize: "14px",
+            }}
           >
-            Bekijk op Solana Explorer
+            ← Terug naar SOLANA.PUMP
           </a>
-        </section>
 
-        <section
-          style={{
-            background: "#151922",
-            padding: "24px",
-            borderRadius: "16px",
-            marginTop: "20px",
-          }}
-        >
-          <h2>Token beveiliging</h2>
+          <section
+            style={{
+              textAlign: "center",
+              padding: "45px 15px 30px",
+            }}
+          >
+            {coin.metadata.image ? (
+              <img
+                src={coin.metadata.image}
+                alt={coin.metadata.name || "Coin logo"}
+                style={{
+                  width: "170px",
+                  height: "170px",
+                  objectFit: "cover",
+                  borderRadius: "28px",
+                  border: "2px solid #a3ff12",
+                  boxShadow: "0 0 35px #a3ff1230",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "170px",
+                  height: "170px",
+                  margin: "0 auto",
+                  borderRadius: "28px",
+                  background: "#151922",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: "50px",
+                }}
+              >
+                🪙
+              </div>
+            )}
 
-          <p>
-            Mint Authority:{" "}
-            {coin.mintAuthority === null
-              ? "Ingetrokken"
-              : "Nog actief"}
-          </p>
+            <h1 style={{ fontSize: "34px", margin: "22px 0 8px" }}>
+              {coin.metadata.name || "Solana Coin"}
+            </h1>
 
-          <p>
-            Freeze Authority:{" "}
-            {coin.freezeAuthority === null
-              ? "Ingetrokken"
-              : "Nog actief"}
-          </p>
+            <p
+              style={{
+                color: "#a3ff12",
+                fontSize: "19px",
+                fontWeight: "bold",
+                margin: 0,
+              }}
+            >
+              {coin.metadata.symbol
+                ? `$${coin.metadata.symbol}`
+                : "TOKEN"}
+            </p>
 
-          <p style={{ color: authoritiesRevoked ? "#a3ff12" : "#ff7777" }}>
-            {authoritiesRevoked
-              ? "Beide bevoegdheden zijn ingetrokken."
-              : "Let op: een of beide bevoegdheden zijn nog actief."}
-          </p>
-        </section>
+            <p style={{ color: "#9299a6", fontSize: "13px" }}>
+              Built on Solana
+            </p>
+          </section>
 
-        <p style={{ color: "#999", marginTop: "35px" }}>
-          SOLANA.PUMP — Devnet testomgeving
-        </p>
+          <section
+            style={{
+              background: "#151922",
+              border: "1px solid #292e38",
+              borderRadius: "18px",
+              padding: "22px",
+              marginBottom: "18px",
+            }}
+          >
+            <h2 style={{ fontSize: "20px", marginTop: 0 }}>
+              The story behind this coin
+            </h2>
+
+            <p
+              style={{
+                color: "#c4c9d2",
+                lineHeight: 1.8,
+                whiteSpace: "pre-wrap",
+                marginBottom: 0,
+              }}
+            >
+              {coin.metadata.description ||
+                "Er is nog geen beschrijving beschikbaar."}
+            </p>
+          </section>
+
+          <section
+            style={{
+              background: "#151922",
+              border: "1px solid #292e38",
+              borderRadius: "18px",
+              padding: "22px",
+              marginBottom: "18px",
+            }}
+          >
+            <h2 style={{ fontSize: "20px", marginTop: 0 }}>
+              Coin information
+            </h2>
+
+            <InfoRow label="Total supply" value={totalSupply} />
+            <InfoRow label="Decimals" value={String(coin.decimals)} />
+            <InfoRow label="Network" value="Solana Devnet" />
+
+            <div style={{ paddingTop: "18px" }}>
+              <p style={{ color: "#9299a6", fontSize: "13px" }}>
+                Token mint address
+              </p>
+
+              <p
+                style={{
+                  color: "white",
+                  fontSize: "13px",
+                  overflowWrap: "anywhere",
+                  lineHeight: 1.7,
+                }}
+              >
+                {coin.mintAddress}
+              </p>
+
+              <a
+                href={`https://explorer.solana.com/address/${coin.mintAddress}?cluster=devnet`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "#a3ff12", fontSize: "14px" }}
+              >
+                View on Solana Explorer ↗
+              </a>
+            </div>
+          </section>
+
+          <section
+            style={{
+              background: "#151922",
+              border: "1px solid #292e38",
+              borderRadius: "18px",
+              padding: "22px",
+              marginBottom: "25px",
+            }}
+          >
+            <h2 style={{ fontSize: "20px", marginTop: 0 }}>
+              Security status
+            </h2>
+
+            <div style={{ marginBottom: "15px" }}>
+              <p style={{ margin: "0 0 6px" }}>Mint Authority</p>
+              <strong
+                style={{
+                  color: coin.mintAuthority === null ? "#a3ff12" : "#ff7777",
+                }}
+              >
+                {coin.mintAuthority === null
+                  ? "✓ Revoked"
+                  : "⚠ Still active"}
+              </strong>
+            </div>
+
+            <div style={{ marginBottom: "15px" }}>
+              <p style={{ margin: "0 0 6px" }}>Freeze Authority</p>
+              <strong
+                style={{
+                  color: coin.freezeAuthority === null ? "#a3ff12" : "#ff7777",
+                }}
+              >
+                {coin.freezeAuthority === null
+                  ? "✓ Revoked"
+                  : "⚠ Still active"}
+              </strong>
+            </div>
+
+            <p
+              style={{
+                color: authoritiesRevoked ? "#a3ff12" : "#ff7777",
+                lineHeight: 1.6,
+                fontSize: "14px",
+              }}
+            >
+              {authoritiesRevoked
+                ? "Both token authorities have been revoked."
+                : "One or more token authorities are still active."}
+            </p>
+
+            <p
+              style={{
+                color: "#9299a6",
+                fontSize: "12px",
+                lineHeight: 1.6,
+                marginBottom: 0,
+              }}
+            >
+              Dit is geen volledige rugpullgarantie. Liquiditeit en andere
+              risico's moeten apart worden gecontroleerd.
+            </p>
+          </section>
+
+          <footer
+            style={{
+              textAlign: "center",
+              color: "#777f8d",
+              fontSize: "13px",
+            }}
+          >
+            SOLANA.PUMP — Security first. Community always.
+          </footer>
+        </div>
       </main>
     );
   } catch (error) {
@@ -263,12 +388,21 @@ export default async function CoinPage({
       error instanceof Error ? error.message : "Onbekende fout.";
 
     return (
-      <main style={{ padding: "40px 20px", color: "white" }}>
-        <a href="/" style={{ color: "#a3ff12" }}>
-          ← Terug naar SOLANA.PUMP
-        </a>
-        <h1>Coin niet gevonden</h1>
-        <p>{errorMessage}</p>
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "#090b10",
+          color: "white",
+          padding: "40px 20px",
+        }}
+      >
+        <div style={{ maxWidth: "680px", margin: "0 auto" }}>
+          <a href="/" style={{ color: "#a3ff12" }}>
+            ← Terug naar SOLANA.PUMP
+          </a>
+          <h1>Coin niet gevonden</h1>
+          <p>{errorMessage}</p>
+        </div>
       </main>
     );
   }

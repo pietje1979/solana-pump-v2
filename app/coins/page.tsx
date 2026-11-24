@@ -1,6 +1,8 @@
 
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 type Coin = {
   id: number;
   mint_address: string;
@@ -16,6 +18,7 @@ async function getCoins(): Promise<Coin[]> {
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!url || !key) {
+    console.error("Supabase-instellingen ontbreken.");
     return [];
   }
 
@@ -49,10 +52,7 @@ export default async function CoinsPage() {
   return (
     <main className="min-h-screen bg-[#090b10] px-5 py-10 text-white">
       <div className="mx-auto max-w-6xl">
-        <Link
-          href="/"
-          className="text-sm text-[#a3ff12] hover:underline"
-        >
+        <Link href="/" className="text-sm text-[#a3ff12] hover:underline">
           ← Terug naar SOLANA.PUMP
         </Link>
 
@@ -60,9 +60,7 @@ export default async function CoinsPage() {
           <p className="mb-3 text-sm font-bold uppercase tracking-widest text-[#a3ff12]">
             Community tokens
           </p>
-          <h1 className="text-4xl font-black">
-            Explore coins
-          </h1>
+          <h1 className="text-4xl font-black">Explore coins</h1>
           <p className="mt-3 text-gray-400">
             Ontdek alle memecoins die op SOLANA.PUMP zijn aangemaakt.
           </p>
@@ -70,9 +68,7 @@ export default async function CoinsPage() {
 
         {coins.length === 0 ? (
           <div className="rounded-2xl border border-white/10 bg-[#11151d] p-8">
-            <h2 className="text-xl font-bold">
-              Nog geen coins gevonden
-            </h2>
+            <h2 className="text-xl font-bold">Nog geen coins gevonden</h2>
             <p className="mt-2 text-gray-400">
               Zodra er coins succesvol worden geregistreerd, verschijnen ze hier.
             </p>
@@ -102,22 +98,14 @@ export default async function CoinsPage() {
                   </div>
                 )}
 
-                <h2 className="text-xl font-black">
-                  {coin.name}
-                </h2>
-
-                <p className="mt-1 font-bold text-[#a3ff12]">
-                  ${coin.ticker}
-                </p>
-
+                <h2 className="text-xl font-black">{coin.name}</h2>
+                <p className="mt-1 font-bold text-[#a3ff12]">${coin.ticker}</p>
                 <p className="mt-4 min-h-16 text-sm leading-6 text-gray-400">
                   {coin.description || "Geen beschrijving beschikbaar."}
                 </p>
-
                 <p className="mt-4 break-all text-xs text-gray-500">
                   Mint: {coin.mint_address}
                 </p>
-
                 <Link
                   href={`/coin/${coin.mint_address}`}
                   className="mt-5 block rounded-xl bg-[#a3ff12] px-5 py-3 text-center font-bold text-black"

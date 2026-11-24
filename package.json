@@ -13,8 +13,10 @@
     "@metaplex-foundation/umi": "*",
     "@metaplex-foundation/umi-bundle-defaults": "*",
     "@metaplex-foundation/umi-web3js-adapters": "^1.6.0",
+    "@raydium-io/raydium-sdk-v2": "0.2.64-alpha",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.99.0",
+    "bn.js": "^5.2.2",
     "next": "15.5.29",
     "react": "19.1.0",
     "react-dom": "19.1.0"

@@ -32,9 +32,7 @@ export async function GET() {
       expectedProgramMatchesSdk:
         Boolean(sdkLockProgram) &&
         new PublicKey(sdkLockProgram).equals(expectedLockProgram),
-
       raydiumClassExported: Boolean(RaydiumSdk.Raydium),
-      
     };
 
     return NextResponse.json({

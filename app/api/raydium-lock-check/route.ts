@@ -34,7 +34,7 @@ export async function GET() {
         new PublicKey(sdkLockProgram).equals(expectedLockProgram),
 
       raydiumClassExported: Boolean(RaydiumSdk.Raydium),
-      cpmmModuleExported: Boolean(RaydiumSdk.Cpmm),
+      
     };
 
     return NextResponse.json({

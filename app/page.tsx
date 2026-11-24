@@ -711,13 +711,32 @@ export default function Home() {
           <div>
             <p>Token mint address:</p>
             <p>{mintAddress}</p>
+
             <a
-              href={`https://explorer.solana.com/address/${mintAddress}?cluster=devnet`}
-              target="_blank"
-              rel="noreferrer"
+              href={`/coin/${mintAddress}`}
+              style={{
+                display: "inline-block",
+                margin: "12px 0",
+                padding: "12px 20px",
+                background: "#a3ff12",
+                color: "#090b10",
+                borderRadius: "8px",
+                fontWeight: "bold",
+                textDecoration: "none",
+              }}
             >
-              View token on Solana Explorer
+              Bekijk je coinpagina →
             </a>
+
+            <p>
+              <a
+                href={`https://explorer.solana.com/address/${mintAddress}?cluster=devnet`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View token on Solana Explorer
+              </a>
+            </p>
           </div>
         )}
 

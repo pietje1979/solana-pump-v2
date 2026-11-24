@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -62,14 +63,15 @@ const umi = createUmi("https://api.devnet.solana.com").use(
   mplTokenMetadata()
 );
 
-const DEFAULT_TEST_MINT = "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
+const DEFAULT_TEST_MINT =
+  "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
 
 export default function Home() {
   const [walletAddress, setWalletAddress] = useState("");
- const [coinName, setCoinName] = useState("");
-const [ticker, setTicker] = useState("");
-const [description, setDescription] = useState("");
-const [supply, setSupply] = useState("1000000000");
+  const [coinName, setCoinName] = useState("");
+  const [ticker, setTicker] = useState("");
+  const [description, setDescription] = useState("");
+  const [supply, setSupply] = useState("1000000000");
 
   const [message, setMessage] = useState("");
   const [mintAddress, setMintAddress] = useState("");
@@ -199,14 +201,18 @@ const [supply, setSupply] = useState("1000000000");
       }
 
       let mintPublicKey: PublicKey;
+
       try {
         mintPublicKey = new PublicKey(authorityMintAddress.trim());
       } catch {
-        setMessage("Het tokenadres is ongeldig. Controleer het mintadres.");
+        setMessage(
+          "Het tokenadres is ongeldig. Controleer het mintadres."
+        );
         return;
       }
 
       const wallet = new PublicKey(walletAddress);
+
       const mintInfo = await getMint(
         connection,
         mintPublicKey,
@@ -357,6 +363,11 @@ const [supply, setSupply] = useState("1000000000");
         return;
       }
 
+      if (description.trim().length > 1000) {
+        setMessage("De beschrijving mag maximaal 1000 tekens bevatten.");
+        return;
+      }
+
       if (!selectedImage) {
         setMessage("Selecteer eerst een logo.");
         return;
@@ -378,10 +389,15 @@ const [supply, setSupply] = useState("1000000000");
       setImageUrl(imageUpload.url);
 
       setMessage("Stap 2/4: coin-gegevens worden opgeslagen...");
+
+      const coinDescription =
+        description.trim() ||
+        `${coinName.trim()} token on SOLANA.PUMP.`;
+
       const metadata = {
         name: coinName.trim(),
         symbol: ticker,
-        description: `${coinName.trim()} token on SOLANA.PUMP.`,
+        description: coinDescription,
         image: imageUpload.url,
         external_url: "https://solana-pump-v2-pi.vercel.app/",
         attributes: [],
@@ -406,6 +422,7 @@ const [supply, setSupply] = useState("1000000000");
       setMetadataUrl(metadataUpload.url);
 
       setMessage("Stap 3/4: Solana-transactie wordt voorbereid...");
+
       const mint = Keypair.generate();
       const decimals = 6;
       const tokenAmount = amount * 1000000n;
@@ -633,17 +650,21 @@ const [supply, setSupply] = useState("1000000000");
           maxLength={10}
           disabled={busy}
         />
-        <label htmlFor="description">Coin description / Your story</label>
-<textarea
-  id="description"
-  value={description}
-  onChange={(event) => setDescription(event.target.value)}
-  placeholder="Vertel waar jouw coin voor staat, wat de missie is en welke community je wilt bouwen..."
-  maxLength={1000}
-  rows={5}
-  disabled={busy}
-/>
-<p>{description.length}/1000 tekens</p>
+
+        <label htmlFor="description">
+          Coin description / Your story
+        </label>
+        <textarea
+          id="description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Vertel waar jouw coin voor staat, wat de missie is en welke community je wilt bouwen..."
+          maxLength={1000}
+          rows={5}
+          disabled={busy}
+        />
+        <p>{description.length}/1000 tekens</p>
+
         <label htmlFor="supply">Total supply</label>
         <input
           id="supply"

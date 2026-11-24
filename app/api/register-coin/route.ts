@@ -3,17 +3,85 @@ import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getMint } from "@solana/spl-token";
 
+export const runtime = "nodejs";
+
 const connection = new Connection(
   "https://api.devnet.solana.com",
   "confirmed"
 );
 
+// Alleen-lezen controle van de Supabase-verbinding
+export async function GET() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+
+  if (!url || !secret) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Supabase-instellingen ontbreken.",
+        hasUrl: Boolean(url),
+        hasSecret: Boolean(secret),
+      },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/coins?select=id&limit=1`,
+      {
+        headers: {
+          apikey: secret,
+          Authorization: `Bearer ${secret}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      const details = await response.text();
+      console.error("Supabase controle mislukt:", response.status, details);
+
+      return NextResponse.json(
+        {
+          success: false,
+          database: "Niet verbonden",
+          status: response.status,
+          error: "Supabase kon de coins-tabel niet ophalen.",
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      database: "Verbonden",
+      table: "public.coins",
+      message: "Supabase werkt correct.",
+    });
+  } catch (error) {
+    console.error("Supabase verbindingsfout:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Verbinding met Supabase mislukt.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Registratie van een bestaande, bevestigde Devnet-token
 export async function POST(request: NextRequest) {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const secret = process.env.SUPABASE_SECRET_KEY;
 
     if (!url || !secret) {
+      console.error("Register coin: Supabase-instellingen ontbreken.");
+
       return NextResponse.json(
         { error: "Database-instellingen ontbreken." },
         { status: 500 }
@@ -48,6 +116,7 @@ export async function POST(request: NextRequest) {
 
     if (
       typeof name !== "string" ||
+      name.trim().length === 0 ||
       name.length > 32 ||
       typeof ticker !== "string" ||
       !/^[A-Za-z0-9]{2,10}$/.test(ticker) ||
@@ -60,8 +129,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (
+      typeof imageUrl !== "undefined" &&
+      imageUrl !== null &&
+      typeof imageUrl !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "Ongeldige afbeeldings-URL." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof metadataUrl !== "undefined" &&
+      metadataUrl !== null &&
+      typeof metadataUrl !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "Ongeldige metadata-URL." },
+        { status: 400 }
+      );
+    }
+
     const mint = new PublicKey(mintAddress);
     const wallet = new PublicKey(walletAddress);
+
+    console.log("Register coin: Solana-transactie controleren.");
 
     const transaction = await connection.getParsedTransaction(
       transactionSignature,
@@ -137,7 +230,9 @@ export async function POST(request: NextRequest) {
 
     if (!initializeInstruction || !revokedMint || !revokedFreeze) {
       return NextResponse.json(
-        { error: "Tokenaanmaak of veiligheidscontroles niet bevestigd." },
+        {
+          error: "Tokenaanmaak of veiligheidscontroles niet bevestigd.",
+        },
         { status: 400 }
       );
     }
@@ -154,44 +249,57 @@ export async function POST(request: NextRequest) {
       mintInfo.freezeAuthority !== null
     ) {
       return NextResponse.json(
-        { error: "Mint- en Freeze Authority zijn niet beide ingetrokken." },
+        {
+          error: "Mint- en Freeze Authority zijn niet beide ingetrokken.",
+        },
         { status: 400 }
       );
     }
 
-    const response = await fetch(
-      `${url}/rest/v1/coins`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: secret,
-          Authorization: `Bearer ${secret}`,
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify({
-          mint_address: mint.toString(),
-          name: name.trim(),
-          ticker: ticker.toUpperCase(),
-          description: description.trim(),
-          image_url: imageUrl || null,
-          metadata_url: metadataUrl || null,
-          network: "devnet",
-        }),
-        cache: "no-store",
-      }
-    );
+    console.log("Register coin: veiligheidscontroles geslaagd.");
+    console.log("Register coin: coin naar Supabase versturen.");
+
+    const response = await fetch(`${url}/rest/v1/coins`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: secret,
+        Authorization: `Bearer ${secret}`,
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        mint_address: mint.toString(),
+        name: name.trim(),
+        ticker: ticker.toUpperCase(),
+        description: description.trim(),
+        image_url: imageUrl || null,
+        metadata_url: metadataUrl || null,
+        network: "devnet",
+      }),
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
 
+      console.error(
+        "Register coin: Supabase opslag mislukt:",
+        response.status,
+        errorText
+      );
+
       return NextResponse.json(
-        { error: "Opslaan in database mislukt.", details: errorText },
+        {
+          error: "Opslaan in database mislukt.",
+          details: errorText,
+        },
         { status: response.status }
       );
     }
 
     const savedCoin = await response.json();
+
+    console.log("Register coin: succesvol opgeslagen.");
 
     return NextResponse.json({
       success: true,

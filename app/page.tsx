@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, type ChangeEvent } from "react";
@@ -21,6 +20,7 @@ import {
   createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
   getMint,
+  getAccount,
 } from "@solana/spl-token";
 
 import {
@@ -44,6 +44,25 @@ const umi = createUmi("https://api.devnet.solana.com").use(
 
 const DEFAULT_TEST_MINT =
   "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
+
+function formatTokenAmount(amount: bigint, decimals: number) {
+  const base = 10n ** BigInt(decimals);
+  const whole = amount / base;
+  const fraction = amount % base;
+
+  const wholeText = whole.toLocaleString("nl-NL");
+
+  if (decimals === 0 || fraction === 0n) {
+    return wholeText;
+  }
+
+  const fractionText = fraction
+    .toString()
+    .padStart(decimals, "0")
+    .replace(/0+$/, "");
+
+  return `${wholeText},${fractionText}`;
+}
 
 export default function Home() {
   const { connection } = useConnection();
@@ -75,7 +94,71 @@ export default function Home() {
   const [imageUrl, setImageUrl] = useState("");
   const [metadataUrl, setMetadataUrl] = useState("");
 
-  // Controleer automatisch de beveiliging van het ingevulde mintadres.
+  // Nieuwe gegevens voor de totale voorraad en het wallet-saldo.
+  const [totalSupply, setTotalSupply] = useState("");
+  const [walletTokenBalance, setWalletTokenBalance] = useState("");
+  const [tokenDecimals, setTokenDecimals] = useState<number | null>(null);
+  const [mintAuthorityStatus, setMintAuthorityStatus] = useState("");
+  const [freezeAuthorityStatus, setFreezeAuthorityStatus] = useState("");
+  const [tokenInfoStatus, setTokenInfoStatus] = useState("");
+
+  async function loadTokenInformation(address: string) {
+    const mintPublicKey = new PublicKey(address);
+
+    const mintInfo = await getMint(
+      connection,
+      mintPublicKey,
+      "confirmed",
+      TOKEN_PROGRAM_ID
+    );
+
+    setTotalSupply(
+      formatTokenAmount(mintInfo.supply, mintInfo.decimals)
+    );
+    setTokenDecimals(mintInfo.decimals);
+
+    setMintAuthorityStatus(
+      mintInfo.mintAuthority === null
+        ? "Ingetrokken"
+        : "Nog actief"
+    );
+
+    setFreezeAuthorityStatus(
+      mintInfo.freezeAuthority === null
+        ? "Ingetrokken"
+        : "Nog actief"
+    );
+
+    if (!publicKey) {
+      setWalletTokenBalance("");
+      return;
+    }
+
+    const tokenAccounts = await connection.getTokenAccountsByOwner(
+      publicKey,
+      { mint: mintPublicKey },
+      "confirmed"
+    );
+
+    let totalBalance = 0n;
+
+    for (const tokenAccount of tokenAccounts.value) {
+      const accountInfo = await getAccount(
+        connection,
+        tokenAccount.pubkey,
+        "confirmed",
+        TOKEN_PROGRAM_ID
+      );
+
+      totalBalance += accountInfo.amount;
+    }
+
+    setWalletTokenBalance(
+      formatTokenAmount(totalBalance, mintInfo.decimals)
+    );
+  }
+
+  // Controleer automatisch beveiliging, voorraad en wallet-saldo.
   useEffect(() => {
     let cancelled = false;
 
@@ -84,6 +167,12 @@ export default function Home() {
 
       if (!address) {
         setSecurityStatus("");
+        setTokenInfoStatus("");
+        setTotalSupply("");
+        setWalletTokenBalance("");
+        setMintAuthorityStatus("");
+        setFreezeAuthorityStatus("");
+        setTokenDecimals(null);
         return;
       }
 
@@ -93,10 +182,14 @@ export default function Home() {
         mintPublicKey = new PublicKey(address);
       } catch {
         setSecurityStatus("Vul een geldig tokenadres in.");
+        setTokenInfoStatus("Vul een geldig mintadres in.");
+        setTotalSupply("");
+        setWalletTokenBalance("");
         return;
       }
 
       setSecurityChecking(true);
+      setTokenInfoStatus("Tokeninformatie wordt opgehaald...");
       setSecurityStatus("Beveiliging wordt gecontroleerd op Solana Devnet...");
 
       try {
@@ -111,6 +204,19 @@ export default function Home() {
 
         const mintRevoked = mintInfo.mintAuthority === null;
         const freezeRevoked = mintInfo.freezeAuthority === null;
+
+        setTotalSupply(
+          formatTokenAmount(mintInfo.supply, mintInfo.decimals)
+        );
+        setTokenDecimals(mintInfo.decimals);
+
+        setMintAuthorityStatus(
+          mintRevoked ? "Ingetrokken" : "Nog actief"
+        );
+
+        setFreezeAuthorityStatus(
+          freezeRevoked ? "Ingetrokken" : "Nog actief"
+        );
 
         if (mintRevoked && freezeRevoked) {
           setSecurityStatus(
@@ -127,14 +233,54 @@ export default function Home() {
 
           setSecurityStatus(`${mintText} ${freezeText}`);
         }
+
+        if (publicKey) {
+          const tokenAccounts = await connection.getTokenAccountsByOwner(
+            publicKey,
+            { mint: mintPublicKey },
+            "confirmed"
+          );
+
+          let totalBalance = 0n;
+
+          for (const tokenAccount of tokenAccounts.value) {
+            const accountInfo = await getAccount(
+              connection,
+              tokenAccount.pubkey,
+              "confirmed",
+              TOKEN_PROGRAM_ID
+            );
+
+            totalBalance += accountInfo.amount;
+          }
+
+          if (cancelled) return;
+
+          setWalletTokenBalance(
+            formatTokenAmount(totalBalance, mintInfo.decimals)
+          );
+        } else {
+          setWalletTokenBalance("");
+        }
+
+        setTokenInfoStatus("Tokeninformatie succesvol opgehaald.");
       } catch (error) {
         if (cancelled) return;
 
-        console.error("Security check error:", error);
+        console.error("Token information check error:", error);
 
         setSecurityStatus(
           "Controle mislukt. Controleer het mintadres en of je met Devnet verbonden bent."
         );
+
+        setTokenInfoStatus(
+          "Tokeninformatie kon niet worden opgehaald. Controleer het mintadres en Devnet."
+        );
+
+        setTotalSupply("");
+        setWalletTokenBalance("");
+        setMintAuthorityStatus("");
+        setFreezeAuthorityStatus("");
       } finally {
         if (!cancelled) {
           setSecurityChecking(false);
@@ -147,7 +293,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [authorityMintAddress, connection]);
+  }, [authorityMintAddress, connection, publicKey]);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -218,6 +364,9 @@ export default function Home() {
 
       setSecurityChecking(true);
       setSecurityStatus("Beveiliging wordt gecontroleerd...");
+      setTokenInfoStatus("Tokeninformatie wordt opgehaald...");
+
+      await loadTokenInformation(address);
 
       const mintInfo = await getMint(
         connection,
@@ -238,11 +387,14 @@ export default function Home() {
           `${mintRevoked ? "Mint Authority: ingetrokken." : "Mint Authority: nog actief."} ${freezeRevoked ? "Freeze Authority: ingetrokken." : "Freeze Authority: nog actief."}`
         );
       }
+
+      setTokenInfoStatus("Tokeninformatie succesvol opgehaald.");
     } catch (error) {
       console.error("Security check error:", error);
       setSecurityStatus(
         "Controle mislukt. Controleer het tokenadres en Devnet."
       );
+      setTokenInfoStatus("Tokeninformatie kon niet worden opgehaald.");
     } finally {
       setSecurityChecking(false);
     }
@@ -323,7 +475,6 @@ export default function Home() {
         return;
       }
 
-      // Bewaar hetzelfde blockhash voor verzending en bevestiging.
       const latest = await connection.getLatestBlockhash("confirmed");
       transaction.feePayer = publicKey;
       transaction.recentBlockhash = latest.blockhash;
@@ -375,6 +526,8 @@ export default function Home() {
           "Transactie bevestigd. Controleer de resterende bevoegdheid opnieuw."
         );
       }
+
+      await loadTokenInformation(authorityMintAddress.trim());
     } catch (error) {
       console.error("Authority revocation error:", error);
       const details =
@@ -551,7 +704,6 @@ export default function Home() {
         )
       );
 
-      // Trek beide bevoegdheden in dezelfde transactie in.
       transaction.add(
         createSetAuthorityInstruction(
           mint.publicKey,
@@ -627,6 +779,8 @@ export default function Home() {
           "Je testcoin is aangemaakt. Let op: controle van de bevoegdheden is nog niet afgerond."
         );
       }
+
+      await loadTokenInformation(createdMintAddress);
     } catch (error) {
       console.error("Token creation error:", error);
       const details =
@@ -801,10 +955,9 @@ export default function Home() {
       </section>
 
       <section className="launch">
-        <h2>Token security</h2>
+        <h2>Tokeninformatie</h2>
         <p>
-          Controleer Mint Authority en Freeze Authority van een bestaande
-          Devnet-token. Als ze al zijn ingetrokken, laat SOLANA.PUMP dat zien.
+          Deze gegevens worden rechtstreeks gecontroleerd op Solana Devnet.
         </p>
 
         <label htmlFor="authorityMintAddress">
@@ -820,6 +973,69 @@ export default function Home() {
           placeholder="Plak hier het token mint address"
           disabled={busy}
         />
+
+        <p aria-live="polite">{tokenInfoStatus}</p>
+
+        <div>
+          <h3>Totale tokenvoorraad</h3>
+          <p>
+            {totalSupply !== ""
+              ? `${totalSupply} tokens`
+              : "Nog niet beschikbaar"}
+          </p>
+        </div>
+
+        <div>
+          <h3>Saldo in jouw verbonden wallet</h3>
+          <p>
+            {!connected
+              ? "Verbind je wallet om je saldo te bekijken."
+              : walletTokenBalance !== ""
+                ? `${walletTokenBalance} tokens`
+                : "Saldo wordt opgehaald..."}
+          </p>
+        </div>
+
+        <div>
+          <h3>Mint Authority</h3>
+          <p>{mintAuthorityStatus || "Nog niet gecontroleerd"}</p>
+        </div>
+
+        <div>
+          <h3>Freeze Authority</h3>
+          <p>{freezeAuthorityStatus || "Nog niet gecontroleerd"}</p>
+        </div>
+
+        <div>
+          <h3>Aantal decimalen</h3>
+          <p>
+            {tokenDecimals !== null
+              ? tokenDecimals
+              : "Nog niet beschikbaar"}
+          </p>
+        </div>
+
+        <div>
+          <h3>Mintadres</h3>
+          <p>{authorityMintAddress || "Nog geen mintadres ingevuld"}</p>
+          {authorityMintAddress && (
+            <a
+              href={`https://explorer.solana.com/address/${authorityMintAddress}?cluster=devnet`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Bekijk token op Solana Explorer
+            </a>
+          )}
+        </div>
+      </section>
+
+      <section className="launch">
+        <h2>Token security</h2>
+        <p>
+          Controleer Mint Authority en Freeze Authority van een bestaande
+          Devnet-token. Als ze al zijn ingetrokken, laat SOLANA.PUMP dat zien.
+        </p>
 
         <p aria-live="polite">
           {securityChecking ? "Bezig met controleren..." : securityStatus}

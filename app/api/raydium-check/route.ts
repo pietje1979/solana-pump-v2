@@ -9,7 +9,9 @@ const connection = new Connection(
   "confirmed"
 );
 
-// Officiële Raydium Devnet-programma's
+const TREASURY =
+  "9wTe2MV9ZpBM9TdRsSY9vkMVH595YSeDbvoEebnE2E6W";
+
 const PROGRAMS = {
   cpmm: "DRaycpLY18LhpbydsBWbVJtxpNv9oXPgjRSfpF2bWpYb",
   burnAndEarn: "DRay25Usp3YJAi7beckgpGUC7mGJ2cR1AVPxhYfwVCUX",
@@ -21,7 +23,7 @@ async function checkAccount(address: string) {
   const account = await connection.getAccountInfo(publicKey);
 
   return {
-    address,
+    address: publicKey.toBase58(),
     exists: account !== null,
     executable: account?.executable ?? false,
   };
@@ -29,11 +31,12 @@ async function checkAccount(address: string) {
 
 export async function GET() {
   try {
-    const [cpmm, burnAndEarn, poolFeeReceiver] =
+    const [cpmm, burnAndEarn, poolFeeReceiver, treasury] =
       await Promise.all([
         checkAccount(PROGRAMS.cpmm),
         checkAccount(PROGRAMS.burnAndEarn),
         checkAccount(PROGRAMS.poolFeeReceiver),
+        checkAccount(TREASURY),
       ]);
 
     const configResponse = await fetch(
@@ -41,40 +44,40 @@ export async function GET() {
       { cache: "no-store" }
     );
 
-    let configs = null;
+    const configs = configResponse.ok
+      ? await configResponse.json()
+      : null;
 
-    if (configResponse.ok) {
-      configs = await configResponse.json();
-    }
-
-    const allProgramsReady =
+    const programsReady =
       cpmm.executable &&
       burnAndEarn.executable &&
       poolFeeReceiver.exists;
 
     return NextResponse.json({
-      network: "Solana Devnet",
       success: true,
-      programsReady: allProgramsReady,
+      network: "Solana Devnet",
+      treasuryAddress: treasury.address,
+      treasuryExists: treasury.exists,
+      programsReady,
       checks: {
         cpmm,
         burnAndEarn,
         poolFeeReceiver,
+        treasury,
       },
       cpmmConfigsAvailable: configResponse.ok,
       cpmmConfigs: configs,
       transactionsSent: false,
-      message: allProgramsReady
-        ? "De Devnet-programma's zijn gevonden."
-        : "Een of meer Devnet-programma's zijn niet correct beschikbaar.",
+      liquidityLocked: false,
+      message:
+        "Raydium-programma's en Treasury gecontroleerd. Er is niets vergrendeld.",
     });
   } catch (error) {
-    console.error("Raydium check error:", error);
-
     return NextResponse.json(
       {
         success: false,
-        error: "De Raydium Devnet-controle is mislukt.",
+        error: error instanceof Error ? error.message : String(error),
+        transactionsSent: false,
       },
       { status: 500 }
     );

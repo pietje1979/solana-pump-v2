@@ -16,14 +16,47 @@ function readMetadataString(
   data: Buffer,
   offset: number
 ): { value: string; nextOffset: number } {
+  if (offset + 4 > data.length) {
+    throw new Error("Ongeldige metadata.");
+  }
+
   const length = data.readUInt32LE(offset);
   const start = offset + 4;
   const end = start + length;
 
+  if (end > data.length) {
+    throw new Error("Metadata is onvolledig.");
+  }
+
   return {
-    value: data.subarray(start, end).toString("utf8").replace(/\0/g, "").trim(),
+    value: data.subarray(start, end).toString("utf8")
+      .replace(/\0/g, "").trim(),
     nextOffset: end,
   };
+}
+
+function normalizeImageUrl(url: string): string {
+  const value = url.trim();
+
+  if (value.startsWith("ipfs://ipfs/")) {
+    return "https://gateway.pinata.cloud/ipfs/" +
+      value.slice("ipfs://ipfs/".length);
+  }
+
+  if (value.startsWith("ipfs://")) {
+    return "https://gateway.pinata.cloud/ipfs/" +
+      value.slice("ipfs://".length);
+  }
+
+  if (value.startsWith("/ipfs/")) {
+    return "https://gateway.pinata.cloud" + value;
+  }
+
+  if (value.startsWith("https://") || value.startsWith("http://")) {
+    return value;
+  }
+
+  return "";
 }
 
 async function getCoinData(mintAddress: string) {
@@ -77,10 +110,14 @@ async function getCoinData(mintAddress: string) {
     metadata.symbol = symbol.value;
     metadata.uri = uri.value;
 
-    if (metadata.uri.startsWith("http")) {
+    if (
+      metadata.uri.startsWith("https://") ||
+      metadata.uri.startsWith("http://")
+    ) {
       try {
         const response = await fetch(metadata.uri, {
           cache: "no-store",
+          signal: AbortSignal.timeout(10000),
         });
 
         if (response.ok) {
@@ -92,10 +129,12 @@ async function getCoinData(mintAddress: string) {
               : "";
 
           metadata.image =
-            typeof json.image === "string" ? json.image : "";
+            typeof json.image === "string"
+              ? normalizeImageUrl(json.image)
+              : "";
         }
       } catch {
-        // On-chain metadata blijft beschikbaar.
+        // De on-chain metadata blijft beschikbaar.
       }
     }
   }
@@ -189,6 +228,8 @@ export default async function CoinPage({
               <img
                 src={coin.metadata.image}
                 alt={coin.metadata.name || "Coin logo"}
+                width="170"
+                height="170"
                 style={{
                   width: "170px",
                   height: "170px",
@@ -196,6 +237,8 @@ export default async function CoinPage({
                   borderRadius: "28px",
                   border: "2px solid #a3ff12",
                   boxShadow: "0 0 35px #a3ff1230",
+                  display: "block",
+                  margin: "0 auto",
                 }}
               />
             ) : (
@@ -209,6 +252,7 @@ export default async function CoinPage({
                   display: "grid",
                   placeItems: "center",
                   fontSize: "50px",
+                  border: "1px solid #292e38",
                 }}
               >
                 🪙

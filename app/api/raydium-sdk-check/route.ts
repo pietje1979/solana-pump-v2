@@ -11,7 +11,7 @@ export async function GET() {
     const checks = {
       devnetConfigExported: Boolean(devnet),
       devnetLockProgramExported: Boolean(devnet?.LOCK_CPMM_PROGRAM),
-      devnetLockAuthorityExported: Boolean(devnet?.LCOK_CPMM_AUTH),
+      devnetLockAuthorityExported: Boolean(devnet?.LOCK_CPMM_AUTH),
       lockInstructionExported:
         typeof RaydiumSdk.makeCpmmLockInstruction === "function",
       lockPositionInstructionExported:
@@ -25,12 +25,9 @@ export async function GET() {
       network: "devnet",
       sdk: "@raydium-io/raydium-sdk-v2",
       devnetAddresses: {
-        lockProgram:
-          devnet?.LOCK_CPMM_PROGRAM?.toBase58?.() ?? null,
-        lockAuthority:
-          devnet?.LCOK_CPMM_AUTH?.toBase58?.() ?? null,
-        cpmmProgram:
-          devnet?.CREATE_CPMM_POOL_PROGRAM?.toBase58?.() ?? null,
+        lockProgram: devnet.LOCK_CPMM_PROGRAM.toBase58(),
+        lockAuthority: devnet.LOCK_CPMM_AUTH.toBase58(),
+        cpmmProgram: devnet.CREATE_CPMM_POOL_PROGRAM.toBase58(),
       },
       checks,
       allChecksPassed: Object.values(checks).every(Boolean),

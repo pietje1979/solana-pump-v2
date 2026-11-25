@@ -1,6 +1,7 @@
- "use client";
 
-import { useEffect, useState } from "react";
+"use client";
+
+import { useEffect, useState, type ChangeEvent } from "react";
 import {
   Connection,
   Keypair,
@@ -34,26 +35,10 @@ import {
   toWeb3JsInstruction,
 } from "@metaplex-foundation/umi-web3js-adapters";
 
-type PhantomProvider = {
-  isPhantom?: boolean;
-  connect: () => Promise<{ publicKey: PublicKey }>;
-  disconnect: () => Promise<void>;
-  signAndSendTransaction: (
-    transaction: Transaction,
-    options?: {
-      preflightCommitment?: "processed" | "confirmed" | "finalized";
-    }
-  ) => Promise<{ signature: string }>;
-};
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
-declare global {
-  interface Window {
-    solana?: PhantomProvider;
-    phantom?: { solana?: PhantomProvider };
-  }
-}
-
-const connection = new Connection(
+const connectionForMetadata = new Connection(
   "https://api.devnet.solana.com",
   "confirmed"
 );
@@ -65,9 +50,19 @@ const umi = createUmi("https://api.devnet.solana.com").use(
 const DEFAULT_TEST_MINT = "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
 
 export default function Home() {
-  const [walletAddress, setWalletAddress] = useState("");
+  const { connection } = useConnection();
+
+  const {
+    publicKey,
+    connected,
+    sendTransaction,
+  } = useWallet();
+
+  const walletAddress = publicKey?.toString() ?? "";
+
   const [coinName, setCoinName] = useState("");
   const [ticker, setTicker] = useState("");
+  const [description, setDescription] = useState("");
   const [supply, setSupply] = useState("1000000000");
 
   const [message, setMessage] = useState("");
@@ -96,40 +91,7 @@ export default function Home() {
     return () => URL.revokeObjectURL(preview);
   }, [selectedImage]);
 
-  function getPhantom() {
-    return window.phantom?.solana ?? window.solana;
-  }
-
-  async function connectWallet() {
-    try {
-      const provider = getPhantom();
-
-      if (!provider?.isPhantom) {
-        setMessage("Phantom wallet niet gevonden.");
-        return;
-      }
-
-      const response = await provider.connect();
-      setWalletAddress(response.publicKey.toString());
-      setMessage("Phantom verbonden.");
-    } catch (error) {
-      console.error(error);
-      setMessage("Walletverbinding mislukt.");
-    }
-  }
-
-  async function disconnectWallet() {
-    try {
-      await getPhantom()?.disconnect();
-      setWalletAddress("");
-      setMessage("Wallet ontkoppeld.");
-    } catch (error) {
-      console.error(error);
-      setMessage("Ontkoppelen mislukt.");
-    }
-  }
-
-  function chooseImage(event: React.ChangeEvent<HTMLInputElement>) {
+  function chooseImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -182,22 +144,16 @@ export default function Home() {
     if (busy) return;
 
     try {
+      if (!connected || !publicKey) {
+        setMessage("Verbind eerst je wallet.");
+        return;
+      }
+
       setBusy(true);
       setMessage("");
 
-      const provider = getPhantom();
-
-      if (!provider?.isPhantom) {
-        setMessage("Phantom wallet niet gevonden.");
-        return;
-      }
-
-      if (!walletAddress) {
-        setMessage("Verbind eerst je Phantom wallet.");
-        return;
-      }
-
       let mintPublicKey: PublicKey;
+
       try {
         mintPublicKey = new PublicKey(authorityMintAddress.trim());
       } catch {
@@ -205,7 +161,6 @@ export default function Home() {
         return;
       }
 
-      const wallet = new PublicKey(walletAddress);
       const mintInfo = await getMint(
         connection,
         mintPublicKey,
@@ -216,11 +171,11 @@ export default function Home() {
       const transaction = new Transaction();
       let instructionsAdded = 0;
 
-      if (mintInfo.mintAuthority?.equals(wallet)) {
+      if (mintInfo.mintAuthority?.equals(publicKey)) {
         transaction.add(
           createSetAuthorityInstruction(
             mintPublicKey,
-            wallet,
+            publicKey,
             AuthorityType.MintTokens,
             null,
             [],
@@ -230,16 +185,16 @@ export default function Home() {
         instructionsAdded++;
       } else if (mintInfo.mintAuthority !== null) {
         setMessage(
-          "De verbonden wallet is niet de Mint Authority van deze munt. Er is niets gewijzigd."
+          "Deze wallet is niet de Mint Authority van deze munt."
         );
         return;
       }
 
-      if (mintInfo.freezeAuthority?.equals(wallet)) {
+      if (mintInfo.freezeAuthority?.equals(publicKey)) {
         transaction.add(
           createSetAuthorityInstruction(
             mintPublicKey,
-            wallet,
+            publicKey,
             AuthorityType.FreezeAccount,
             null,
             [],
@@ -249,33 +204,33 @@ export default function Home() {
         instructionsAdded++;
       } else if (mintInfo.freezeAuthority !== null) {
         setMessage(
-          "De verbonden wallet is niet de Freeze Authority van deze munt. Er is niets gewijzigd."
+          "Deze wallet is niet de Freeze Authority van deze munt."
         );
         return;
       }
 
       if (instructionsAdded === 0) {
         setMessage(
-          "Beide bevoegdheden zijn al ingetrokken. Niemand kan extra tokens bijmaken of tokens bevriezen."
+          "Beide bevoegdheden zijn al ingetrokken."
         );
         return;
       }
 
-      const latest = await connection.getLatestBlockhash("confirmed");
-      transaction.feePayer = wallet;
-      transaction.recentBlockhash = latest.blockhash;
-
       setMessage(
-        "Controleer de beveiligingstransactie in Phantom en bevestig deze."
+        "Controleer de beveiligingstransactie in je wallet en bevestig deze."
       );
 
-      const result = await provider.signAndSendTransaction(transaction, {
-        preflightCommitment: "confirmed",
-      });
+      const signature = await sendTransaction(
+        transaction,
+        connection,
+        { preflightCommitment: "confirmed" }
+      );
+
+      const latest = await connection.getLatestBlockhash("confirmed");
 
       const confirmation = await connection.confirmTransaction(
         {
-          signature: result.signature,
+          signature,
           blockhash: latest.blockhash,
           lastValidBlockHeight: latest.lastValidBlockHeight,
         },
@@ -286,7 +241,7 @@ export default function Home() {
         throw new Error("De beveiligingstransactie is niet geslaagd.");
       }
 
-      setSecuritySignature(result.signature);
+      setSecuritySignature(signature);
 
       const updatedMint = await getMint(
         connection,
@@ -327,15 +282,8 @@ export default function Home() {
       setImageUrl("");
       setMetadataUrl("");
 
-      const provider = getPhantom();
-
-      if (!provider?.isPhantom) {
-        setMessage("Phantom wallet niet gevonden.");
-        return;
-      }
-
-      if (!walletAddress) {
-        setMessage("Verbind eerst je Phantom wallet.");
+      if (!connected || !publicKey) {
+        setMessage("Verbind eerst je wallet.");
         return;
       }
 
@@ -356,6 +304,11 @@ export default function Home() {
         return;
       }
 
+      if (!description.trim()) {
+        setMessage("Schrijf eerst het verhaal achter je coin.");
+        return;
+      }
+
       if (!selectedImage) {
         setMessage("Selecteer eerst een logo.");
         return;
@@ -370,17 +323,18 @@ export default function Home() {
 
       setBusy(true);
 
-      const wallet = new PublicKey(walletAddress);
+      const wallet = publicKey;
 
       setMessage("Stap 1/4: logo wordt naar Pinata geüpload...");
       const imageUpload = await uploadToPinata(selectedImage);
       setImageUrl(imageUpload.url);
 
       setMessage("Stap 2/4: coin-gegevens worden opgeslagen...");
+
       const metadata = {
         name: coinName.trim(),
         symbol: ticker,
-        description: `${coinName.trim()} token on SOLANA.PUMP.`,
+        description: description.trim(),
         image: imageUpload.url,
         external_url: "https://solana-pump-v2-pi.vercel.app/",
         attributes: [],
@@ -405,6 +359,7 @@ export default function Home() {
       setMetadataUrl(metadataUpload.url);
 
       setMessage("Stap 3/4: Solana-transactie wordt voorbereid...");
+
       const mint = Keypair.generate();
       const decimals = 6;
       const tokenAmount = amount * 1000000n;
@@ -483,7 +438,7 @@ export default function Home() {
         )
       );
 
-      // Trek beide bevoegdheden in dezelfde transactie in nadat de voorraad is aangemaakt.
+      // Trek beide bevoegdheden in dezelfde transactie in.
       transaction.add(
         createSetAuthorityInstruction(
           mint.publicKey,
@@ -509,16 +464,18 @@ export default function Home() {
       transaction.partialSign(mint);
 
       setMessage(
-        "Stap 4/4: controleer de tokenaanmaak en veiligheidsinstellingen in Phantom..."
+        "Stap 4/4: controleer de tokenaanmaak in je wallet en bevestig deze..."
       );
 
-      const result = await provider.signAndSendTransaction(transaction, {
-        preflightCommitment: "confirmed",
-      });
+      const signature = await sendTransaction(
+        transaction,
+        connection,
+        { preflightCommitment: "confirmed" }
+      );
 
       const confirmation = await connection.confirmTransaction(
         {
-          signature: result.signature,
+          signature,
           blockhash: latest.blockhash,
           lastValidBlockHeight: latest.lastValidBlockHeight,
         },
@@ -531,7 +488,7 @@ export default function Home() {
 
       setMintAddress(mint.publicKey.toString());
       setAuthorityMintAddress(mint.publicKey.toString());
-      setTransactionSignature(result.signature);
+      setTransactionSignature(signature);
 
       const createdMint = await getMint(
         connection,
@@ -570,16 +527,7 @@ export default function Home() {
         </div>
 
         <div className="wallet">
-          {walletAddress ? (
-            <button onClick={disconnectWallet} disabled={busy}>
-              {walletAddress.slice(0, 4)}...
-              {walletAddress.slice(-4)} · Disconnect
-            </button>
-          ) : (
-            <button onClick={connectWallet} disabled={busy}>
-              Connect Phantom
-            </button>
-          )}
+          <WalletMultiButton />
         </div>
       </header>
 
@@ -588,8 +536,12 @@ export default function Home() {
           LAUNCH YOUR <span>MEMECOIN</span>
         </h1>
         <p>Create, launch and trade tokens on Solana.</p>
+
         {message && <p>{message}</p>}
-        {walletAddress && <p>Connected wallet: {walletAddress}</p>}
+
+        {walletAddress && (
+          <p>Connected wallet: {walletAddress}</p>
+        )}
       </section>
 
       <section className="stats">
@@ -630,6 +582,17 @@ export default function Home() {
           }
           placeholder="TEST"
           maxLength={10}
+          disabled={busy}
+        />
+
+        <label htmlFor="description">The story behind your coin</label>
+        <textarea
+          id="description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Vertel waar je coin voor staat, wat je idee is en wat je community samenbrengt..."
+          rows={5}
+          maxLength={1000}
           disabled={busy}
         />
 
@@ -741,7 +704,7 @@ export default function Home() {
 
         <button
           onClick={revokeTokenAuthorities}
-          disabled={busy || !walletAddress}
+          disabled={busy || !connected}
         >
           {busy ? "Bezig..." : "Revoke Mint & Freeze Authority"}
         </button>

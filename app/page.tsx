@@ -38,25 +38,17 @@ import {
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
-const connectionForMetadata = new Connection(
-  "https://api.devnet.solana.com",
-  "confirmed"
-);
-
 const umi = createUmi("https://api.devnet.solana.com").use(
   mplTokenMetadata()
 );
 
-const DEFAULT_TEST_MINT = "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
+const DEFAULT_TEST_MINT =
+  "429L76ZNArU3ox6LnQ2Rv3xATYTqG4M4iu7QPUpQm6Au";
 
 export default function Home() {
   const { connection } = useConnection();
 
-  const {
-    publicKey,
-    connected,
-    sendTransaction,
-  } = useWallet();
+  const { publicKey, connected, sendTransaction } = useWallet();
 
   const walletAddress = publicKey?.toString() ?? "";
 
@@ -69,8 +61,12 @@ export default function Home() {
   const [mintAddress, setMintAddress] = useState("");
   const [authorityMintAddress, setAuthorityMintAddress] =
     useState(DEFAULT_TEST_MINT);
+
   const [transactionSignature, setTransactionSignature] = useState("");
   const [securitySignature, setSecuritySignature] = useState("");
+
+  const [securityStatus, setSecurityStatus] = useState("");
+  const [securityChecking, setSecurityChecking] = useState(false);
 
   const [busy, setBusy] = useState(false);
 
@@ -78,6 +74,80 @@ export default function Home() {
   const [imagePreview, setImagePreview] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [metadataUrl, setMetadataUrl] = useState("");
+
+  // Controleer automatisch de beveiliging van het ingevulde mintadres.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      const address = authorityMintAddress.trim();
+
+      if (!address) {
+        setSecurityStatus("");
+        return;
+      }
+
+      let mintPublicKey: PublicKey;
+
+      try {
+        mintPublicKey = new PublicKey(address);
+      } catch {
+        setSecurityStatus("Vul een geldig tokenadres in.");
+        return;
+      }
+
+      setSecurityChecking(true);
+      setSecurityStatus("Beveiliging wordt gecontroleerd op Solana Devnet...");
+
+      try {
+        const mintInfo = await getMint(
+          connection,
+          mintPublicKey,
+          "confirmed",
+          TOKEN_PROGRAM_ID
+        );
+
+        if (cancelled) return;
+
+        const mintRevoked = mintInfo.mintAuthority === null;
+        const freezeRevoked = mintInfo.freezeAuthority === null;
+
+        if (mintRevoked && freezeRevoked) {
+          setSecurityStatus(
+            "BEVEILIGING GESLAAGD: Mint Authority en Freeze Authority zijn allebei ingetrokken."
+          );
+        } else {
+          const mintText = mintRevoked
+            ? "Mint Authority: ingetrokken."
+            : "Mint Authority: nog actief.";
+
+          const freezeText = freezeRevoked
+            ? "Freeze Authority: ingetrokken."
+            : "Freeze Authority: nog actief.";
+
+          setSecurityStatus(`${mintText} ${freezeText}`);
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Security check error:", error);
+
+        setSecurityStatus(
+          "Controle mislukt. Controleer het mintadres en of je met Devnet verbonden bent."
+        );
+      } finally {
+        if (!cancelled) {
+          setSecurityChecking(false);
+        }
+      }
+    }
+
+    check();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authorityMintAddress, connection]);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -138,6 +208,44 @@ export default function Home() {
       url: result.url as string,
       cid: result.cid as string,
     };
+  }
+
+  async function checkSecurityNow() {
+    const address = authorityMintAddress.trim();
+
+    try {
+      const mintPublicKey = new PublicKey(address);
+
+      setSecurityChecking(true);
+      setSecurityStatus("Beveiliging wordt gecontroleerd...");
+
+      const mintInfo = await getMint(
+        connection,
+        mintPublicKey,
+        "confirmed",
+        TOKEN_PROGRAM_ID
+      );
+
+      const mintRevoked = mintInfo.mintAuthority === null;
+      const freezeRevoked = mintInfo.freezeAuthority === null;
+
+      if (mintRevoked && freezeRevoked) {
+        setSecurityStatus(
+          "BEVEILIGING GESLAAGD: Mint Authority en Freeze Authority zijn allebei ingetrokken."
+        );
+      } else {
+        setSecurityStatus(
+          `${mintRevoked ? "Mint Authority: ingetrokken." : "Mint Authority: nog actief."} ${freezeRevoked ? "Freeze Authority: ingetrokken." : "Freeze Authority: nog actief."}`
+        );
+      }
+    } catch (error) {
+      console.error("Security check error:", error);
+      setSecurityStatus(
+        "Controle mislukt. Controleer het tokenadres en Devnet."
+      );
+    } finally {
+      setSecurityChecking(false);
+    }
   }
 
   async function revokeTokenAuthorities() {
@@ -210,11 +318,15 @@ export default function Home() {
       }
 
       if (instructionsAdded === 0) {
-        setMessage(
-          "Beide bevoegdheden zijn al ingetrokken."
-        );
+        setMessage("Beide bevoegdheden zijn al ingetrokken.");
+        await checkSecurityNow();
         return;
       }
+
+      // Bewaar hetzelfde blockhash voor verzending en bevestiging.
+      const latest = await connection.getLatestBlockhash("confirmed");
+      transaction.feePayer = publicKey;
+      transaction.recentBlockhash = latest.blockhash;
 
       setMessage(
         "Controleer de beveiligingstransactie in je wallet en bevestig deze."
@@ -225,8 +337,6 @@ export default function Home() {
         connection,
         { preflightCommitment: "confirmed" }
       );
-
-      const latest = await connection.getLatestBlockhash("confirmed");
 
       const confirmation = await connection.confirmTransaction(
         {
@@ -256,6 +366,9 @@ export default function Home() {
       ) {
         setMessage(
           "Veiligheidscontrole geslaagd: Mint Authority en Freeze Authority zijn ingetrokken."
+        );
+        setSecurityStatus(
+          "BEVEILIGING GESLAAGD: Mint Authority en Freeze Authority zijn allebei ingetrokken."
         );
       } else {
         setMessage(
@@ -486,8 +599,10 @@ export default function Home() {
         throw new Error("De tokenaanmaak is niet geslaagd.");
       }
 
-      setMintAddress(mint.publicKey.toString());
-      setAuthorityMintAddress(mint.publicKey.toString());
+      const createdMintAddress = mint.publicKey.toString();
+
+      setMintAddress(createdMintAddress);
+      setAuthorityMintAddress(createdMintAddress);
       setTransactionSignature(signature);
 
       const createdMint = await getMint(
@@ -503,6 +618,9 @@ export default function Home() {
       ) {
         setMessage(
           "Je testcoin is aangemaakt. Mint Authority en Freeze Authority zijn direct ingetrokken."
+        );
+        setSecurityStatus(
+          "BEVEILIGING GESLAAGD: Mint Authority en Freeze Authority zijn allebei ingetrokken."
         );
       } else {
         setMessage(
@@ -685,22 +803,34 @@ export default function Home() {
       <section className="launch">
         <h2>Token security</h2>
         <p>
-          Trek Mint Authority en Freeze Authority in voor een bestaande
-          Devnet-token. Dit kan niet ongedaan worden gemaakt.
+          Controleer Mint Authority en Freeze Authority van een bestaande
+          Devnet-token. Als ze al zijn ingetrokken, laat SOLANA.PUMP dat zien.
         </p>
 
         <label htmlFor="authorityMintAddress">
           Token mint address
         </label>
+
         <input
           id="authorityMintAddress"
           value={authorityMintAddress}
           onChange={(event) =>
-            setAuthorityMintAddress(event.target.value.trim())
+            setAuthorityMintAddress(event.target.value)
           }
           placeholder="Plak hier het token mint address"
           disabled={busy}
         />
+
+        <p aria-live="polite">
+          {securityChecking ? "Bezig met controleren..." : securityStatus}
+        </p>
+
+        <button
+          onClick={checkSecurityNow}
+          disabled={securityChecking || busy}
+        >
+          {securityChecking ? "Controleren..." : "Controleer beveiliging"}
+        </button>
 
         <button
           onClick={revokeTokenAuthorities}

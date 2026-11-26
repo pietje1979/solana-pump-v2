@@ -834,6 +834,11 @@ export default function Home() {
       <section className="launch">
         <h2>Launch your coin</h2>
         <p>Create your own Solana test token.</p>
+        <p role="status">
+          Coin-lancering is tijdelijk uitgeschakeld. SOLANA.PUMP activeert dit pas
+          wanneer de verplichte 90/10-verdeling, de 12-maands makerlock en de
+          permanente liquiditeitsvergrendeling on-chain zijn ingebouwd en getest.
+        </p>
 
         <label htmlFor="coinName">Coin name</label>
         <input
@@ -906,8 +911,8 @@ export default function Home() {
           </div>
         )}
 
-        <button onClick={createCoin} disabled={busy}>
-          {busy ? "Creating..." : "Create Coin"}
+        <button onClick={createCoin} disabled={true}>
+          Launch tijdelijk uitgeschakeld
         </button>
 
         {mintAddress && (

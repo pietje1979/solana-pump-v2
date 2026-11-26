@@ -72,6 +72,24 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // Server-side safety guard. Keep COIN_LAUNCH_ENABLED unset until the
+  // mandatory 90/10 allocation, 12-month creator lock, and permanent LP lock
+  // are enforced and verified on-chain.
+  if (process.env.COIN_LAUNCH_ENABLED !== "true") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Coinregistratie is tijdelijk geblokkeerd totdat alle verplichte on-chain beveiligingen zijn ingebouwd en gecontroleerd.",
+        safety: {
+          creatorAllocation90_10: "not_implemented",
+          creatorLock12Months: "not_implemented",
+          permanentLiquidityLock: "not_implemented",
+        },
+      },
+      { status: 503 }
+    );
+  }
+
   let stage = "Start registratie";
 
   try {

@@ -13,10 +13,27 @@ type Coin = {
   created_at: string;
 };
 
+function formatSupply(raw: string, decimals: number): string {
+  const amount = BigInt(raw);
+  const divisor = 10n ** BigInt(decimals);
+  const whole = amount / divisor;
+  const fraction = (amount % divisor)
+    .toString()
+    .padStart(decimals, "0")
+    .replace(/0+$/, "");
+
+  const formattedWhole = new Intl.NumberFormat("nl-NL", {
+    maximumFractionDigits: 0,
+  }).format(whole);
+
+  return fraction ? `${formattedWhole},${fraction}` : formattedWhole;
+}
+
 export default function CoinMarket({ coins }: { coins: Coin[] }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
   const [now, setNow] = useState(0);
+  const [supplies, setSupplies] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setNow(Date.now());
@@ -37,6 +54,44 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
     if (months < 12) return `${months} maanden oud`;
     return `${Math.floor(days / 365)} jaar oud`;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSupplies() {
+      const results = await Promise.all(
+        coins.map(async (coin) => {
+          try {
+            const response = await fetch(
+              `/api/token-supply?mint=${encodeURIComponent(coin.mint_address)}`
+            );
+
+            if (!response.ok) {
+              return [coin.mint_address, "Niet beschikbaar"] as const;
+            }
+
+            const data = await response.json();
+            return [
+              coin.mint_address,
+              formatSupply(data.supply, data.decimals),
+            ] as const;
+          } catch {
+            return [coin.mint_address, "Niet beschikbaar"] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setSupplies(Object.fromEntries(results));
+      }
+    }
+
+    loadSupplies();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [coins]);
 
   const filteredCoins = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -185,6 +240,13 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
 {coinAge(coin.created_at)}
                     </span>
                   </div>
+
+                  <p className="mb-3 text-sm font-semibold text-gray-300">
+                    Totale voorraad:{" "}
+                    <span className="text-[#a3ff12]">
+                      {supplies[coin.mint_address] ?? "Ophalen..."} {coin.ticker}
+                    </span>
+                  </p>
 
                   <p className="mb-4 break-all text-xs text-gray-500">
                     Mint: {coin.mint_address}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type Coin = {
@@ -16,6 +16,27 @@ type Coin = {
 export default function CoinMarket({ coins }: { coins: Coin[] }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
+  const [now, setNow] = useState(0);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  function coinAge(createdAt: string) {
+    if (!now) return "Leeftijd berekenen...";
+    const minutes = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 60000));
+    if (minutes < 1) return "Zojuist aangemaakt";
+    if (minutes < 60) return `${minutes} minuten oud`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} uur oud`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} dagen oud`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months} maanden oud`;
+    return `${Math.floor(days / 365)} jaar oud`;
+  }
 
   const filteredCoins = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -161,12 +182,7 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
                   <div className="mb-4 flex items-center justify-between text-xs text-gray-500">
                     <span>Solana Devnet</span>
                     <span>
-                      {new Date(coin.created_at).toLocaleDateString("nl-NL", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        timeZone: "UTC",
-                      })}
+{coinAge(coin.created_at)}
                     </span>
                   </div>
 

@@ -34,6 +34,7 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
   const [sort, setSort] = useState("newest");
   const [now, setNow] = useState(0);
   const [supplies, setSupplies] = useState<Record<string, string>>({});
+  const [securityChecks, setSecurityChecks] = useState<Record<string, { mintRevoked: boolean; freezeRevoked: boolean } | null>>({});
 
   useEffect(() => {
     setNow(Date.now());
@@ -87,6 +88,47 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
     }
 
     loadSupplies();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [coins]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSecurityChecks() {
+      const results = await Promise.all(
+        coins.map(async (coin) => {
+          try {
+            const response = await fetch(
+              `/api/token-security-check?mint=${encodeURIComponent(coin.mint_address)}`
+            );
+            const data = await response.json();
+
+            if (!response.ok || !data.success || !data.security) {
+              return [coin.mint_address, null] as const;
+            }
+
+            return [
+              coin.mint_address,
+              {
+                mintRevoked: data.security.mintAuthorityRevoked === true,
+                freezeRevoked: data.security.freezeAuthorityRevoked === true,
+              },
+            ] as const;
+          } catch {
+            return [coin.mint_address, null] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setSecurityChecks(Object.fromEntries(results));
+      }
+    }
+
+    loadSecurityChecks();
 
     return () => {
       cancelled = true;
@@ -247,6 +289,33 @@ export default function CoinMarket({ coins }: { coins: Coin[] }) {
                       {supplies[coin.mint_address] ?? "Ophalen..."} {coin.ticker}
                     </span>
                   </p>
+
+                  <div className="mb-4 rounded-xl border border-white/10 bg-[#090b10] p-4">
+                    <p className="mb-3 text-sm font-bold text-white">Tokenveiligheid</p>
+                    {securityChecks[coin.mint_address] === undefined ? (
+                      <p className="text-xs text-gray-400">Veiligheidscontroles uitvoeren...</p>
+                    ) : securityChecks[coin.mint_address] === null ? (
+                      <p className="text-xs text-yellow-400">Controle niet beschikbaar</p>
+                    ) : (
+                      <div className="space-y-2 text-xs">
+                        <p className="flex justify-between gap-2">
+                          <span>Mint Authority</span>
+                          <span className={securityChecks[coin.mint_address]!.mintRevoked ? "text-[#a3ff12]" : "text-red-400"}>
+                            {securityChecks[coin.mint_address]!.mintRevoked ? "Ingetrokken" : "Nog actief"}
+                          </span>
+                        </p>
+                        <p className="flex justify-between gap-2">
+                          <span>Freeze Authority</span>
+                          <span className={securityChecks[coin.mint_address]!.freezeRevoked ? "text-[#a3ff12]" : "text-red-400"}>
+                            {securityChecks[coin.mint_address]!.freezeRevoked ? "Ingetrokken" : "Nog actief"}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                    <p className="mt-3 border-t border-white/10 pt-3 text-xs text-gray-400">
+                      Liquiditeit: Nog niet gecontroleerd
+                    </p>
+                  </div>
 
                   <p className="mb-4 break-all text-xs text-gray-500">
                     Mint: {coin.mint_address}

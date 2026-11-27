@@ -1,4 +1,5 @@
 
+import SiteHeader from "../../components/SiteHeader";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 export const dynamic = "force-dynamic";
@@ -198,7 +199,9 @@ export default async function CoinPage({
     ).toLocaleString("en-US");
 
     return (
-      <main
+      <>
+        <SiteHeader />
+        <main
         style={{
           minHeight: "100vh",
           background: "#090b10",
@@ -426,13 +429,16 @@ export default async function CoinPage({
           </footer>
         </div>
       </main>
+      </>
     );
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Onbekende fout.";
 
     return (
-      <main
+      <>
+        <SiteHeader />
+        <main
         style={{
           minHeight: "100vh",
           background: "#090b10",
@@ -448,6 +454,7 @@ export default async function CoinPage({
           <p>{errorMessage}</p>
         </div>
       </main>
+      </>
     );
   }
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import SiteHeader from "./components/SiteHeader";
+
 import { useEffect, useState, type ChangeEvent } from "react";
 import {
   Connection,
@@ -793,15 +795,7 @@ export default function Home() {
 
   return (
     <main>
-      <header className="header">
-        <div className="logo">
-          SOLANA<span>.PUMP</span>
-        </div>
-
-        <div className="wallet">
-          <WalletMultiButton />
-        </div>
-      </header>
+      <SiteHeader />
 
       <section className="hero">
         <h1>

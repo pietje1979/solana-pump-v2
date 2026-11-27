@@ -1,3 +1,4 @@
+import SiteHeader from "../components/SiteHeader";
 
 import Link from "next/link";
 
@@ -50,7 +51,9 @@ export default async function CoinsPage() {
   const coins = await getCoins();
 
   return (
-    <main className="min-h-screen bg-[#090b10] px-5 py-10 text-white">
+    <>
+      <SiteHeader />
+      <main className="min-h-screen bg-[#090b10] px-5 py-10 text-white">
       <div className="mx-auto max-w-6xl">
         <Link href="/" className="text-sm text-[#a3ff12] hover:underline">
           ← Terug naar SOLANA.PUMP
@@ -117,6 +120,7 @@ export default async function CoinsPage() {
           </div>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
